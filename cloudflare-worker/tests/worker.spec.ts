@@ -28,7 +28,6 @@ test("MCP endpoint rejects requests without bearer authentication", async ({ req
   });
 
   expect(response.status()).toBe(401);
-  await expect(response).toBeOK().catch(() => undefined);
 });
 
 test("MCP initialize returns the FlyBrain bridge capabilities with valid authentication", async ({ request }) => {
