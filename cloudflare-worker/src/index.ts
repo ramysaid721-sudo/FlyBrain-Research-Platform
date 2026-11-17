@@ -1,5 +1,9 @@
+interface RateLimit {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 interface Env {
-  FLYBRAIN_CHAT_API_TOKEN: string;
+  FLYBRAIN_PUBLIC_LIMITER: RateLimit;
 }
 
 const REPOSITORY = "ramysaid721-sudo/FlyBrain-Research-Platform";
@@ -55,12 +59,13 @@ async function retrieve(question: string): Promise<Array<{source: string; releva
   }).slice(0, 6);
 }
 
-async function handleMcp(request: Request, env: Env): Promise<Response> {
-  const auth = request.headers.get("authorization") ?? "";
-  const expected = `Bearer ${env.FLYBRAIN_CHAT_API_TOKEN ?? ""}`;
-  if (!env.FLYBRAIN_CHAT_API_TOKEN || auth.length !== expected.length || auth !== expected) {
-    return json({ error: "unauthorized" }, 401);
+async function handleMcp(request: Request): Promise<Response> {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (contentLength > 65536) return json({ error: "request_too_large" }, 413);
+  if (!request.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+    return json({ error: "content_type_must_be_application_json" }, 415);
   }
+
   let rpc: JsonRpc;
   try { rpc = await request.json() as JsonRpc; } catch { return json({ error: "invalid_json" }, 400); }
   if (!rpc || rpc.jsonrpc !== "2.0" || typeof rpc.method !== "string") return json({ error: "invalid_json_rpc_request" }, 400);
@@ -73,7 +78,7 @@ async function handleMcp(request: Request, env: Env): Promise<Response> {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "flybrain-research-bridge", version: "0.15.0" },
-      instructions: "Use ask_flybrain to retrieve source-labelled FlyBrain-NOS and URCAL project context. Distinguish documented evidence from interpretation and hypotheses. The synthetic LIF runtime is not a biologically validated fly brain or standalone language model."
+      instructions: "Use ask_flybrain to retrieve source-labelled FlyBrain-NOS and URCAL project context. Distinguish documented evidence from interpretation and hypotheses. The synthetic LIF runtime is not a biologically validated fly brain or standalone language model. This server is public and read-only."
     }});
   }
   if (rpc.method === "ping") return json({ jsonrpc: "2.0", id: rpc.id, result: {} });
@@ -81,7 +86,7 @@ async function handleMcp(request: Request, env: Env): Promise<Response> {
     return json({ jsonrpc: "2.0", id: rpc.id, result: { tools: [{
       name: "ask_flybrain",
       title: "Ask FlyBrain research system",
-      description: "Retrieve source-labelled FlyBrain-NOS and URCAL project evidence. ChatGPT synthesizes the returned excerpts; no paid model provider is required.",
+      description: "Public read-only retrieval of source-labelled FlyBrain-NOS and URCAL project evidence. ChatGPT synthesizes the returned excerpts; no paid model provider is required. This tool cannot write, edit, or delete project data.",
       inputSchema: { type: "object", properties: { question: { type: "string", minLength: 1, maxLength: 12000 } }, required: ["question"], additionalProperties: false },
       annotations: { readOnlyHint: true, openWorldHint: true }
     }] }});
@@ -114,6 +119,10 @@ export default {
     if (url.pathname === "/health" && request.method === "GET") return json({ status: "ok", service: "flybrain-cloudflare-worker", version: "0.15.0" });
     if (url.pathname !== "/mcp") return json({ error: "not_found" }, 404);
     if (request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
-    return handleMcp(request, env);
+
+    const clientKey = request.headers.get("cf-connecting-ip") ?? "anonymous";
+    const { success } = await env.FLYBRAIN_PUBLIC_LIMITER.limit({ key: clientKey });
+    if (!success) return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429);
+    return handleMcp(request);
   }
 };
