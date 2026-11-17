@@ -31,18 +31,18 @@ def retrieve_project_context(question: str, release_root: str | Path | None = No
             files.append(item)
         elif item.is_dir():
             files.extend(sorted(item.rglob("*.md")))
-    terms = {x.lower() for x in re.findall(r"[\\w-]{3,}", question)}
+    terms = {x.lower() for x in re.findall(r"[\w-]{3,}", question)}
     ranked = []
     for path in files:
         try:
             raw = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        for paragraph in re.split(r"\\n\\s*\\n", raw):
+        for paragraph in re.split(r"\n\s*\n", raw):
             clean = " ".join(paragraph.split())
             if len(clean) < 45:
                 continue
-            words = {x.lower() for x in re.findall(r"[\\w-]{3,}", clean)}
+            words = {x.lower() for x in re.findall(r"[\w-]{3,}", clean)}
             overlap = len(terms & words)
             if overlap:
                 ranked.append((overlap, min(len(clean), 1400), str(path.relative_to(root)), clean[:1400]))
@@ -103,8 +103,8 @@ class FlyBrainChatApp:
                 if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 1 <= timeout <= 120:
                     return self._response(start_response, "400 Bad Request", {"error": "timeout_seconds must be between 1 and 120"})
                 context = retrieve_project_context(question.strip())
-                context_text = "\\n\\n".join(x["source"] + ": " + x["excerpt"] for x in context)
-                enriched_question = question.strip() + ("\\n\\nProject evidence context:\\n" + context_text if context_text else "")
+                context_text = "\n\n".join(x["source"] + ": " + x["excerpt"] for x in context)
+                enriched_question = question.strip() + ("\n\nProject evidence context:\n" + context_text if context_text else "")
                 result = self._consultation.consult(enriched_question, timeout=int(timeout))
                 if result["status"] == "no_providers_configured":
                     return self._response(start_response, "200 OK", {
