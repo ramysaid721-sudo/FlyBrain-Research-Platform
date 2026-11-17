@@ -13,7 +13,7 @@ services:
       && python -m pip install -e .release/FlyBrain_Research_Platform_v0.14.0/components/FlyBrain-NOS
     startCommand: >-
       PYTHONPATH=.release/FlyBrain_Research_Platform_v0.14.0/components/FlyBrain-NOS
-      python -m flybrain_os.chat_api
+      python -m flybrain_os.mcp_server
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION

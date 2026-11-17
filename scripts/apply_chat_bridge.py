@@ -1,4 +1,4 @@
-"""Apply the repository-level ChatGPT bridge overlay to the release ZIP tree."""
+"""Apply the repository-level ChatGPT/MCP bridge overlay to the release ZIP tree."""
 from __future__ import annotations
 import argparse
 from pathlib import Path
@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PATCHES = {
     ROOT / "bridge" / "chat_api.py": Path("components/FlyBrain-NOS/flybrain_os/chat_api.py"),
     ROOT / "bridge" / "test_chat_api.py": Path("components/FlyBrain-NOS/tests/test_chat_api.py"),
+    ROOT / "bridge" / "mcp_server.py": Path("components/FlyBrain-NOS/flybrain_os/mcp_server.py"),
+    ROOT / "bridge" / "test_mcp_server.py": Path("components/FlyBrain-NOS/tests/test_mcp_server.py"),
 }
 
 def replace_once(path: Path, old: str, new: str) -> None:
@@ -32,7 +34,7 @@ def main() -> None:
     replace_once(source / "components/URCAL/urcal/__init__.py", '__version__="0.3.0"', '__version__="0.3.1"')
     replace_once(source / "components/FlyBrain-NOS/flybrain_os/__init__.py", '__version__ = "0.9.0"', '__version__ = "0.13.3"')
     replace_once(source / "components/FlyBrain-NOS/docs/NEURAL_RUNTIME_STATUS.md", "Release: FlyBrain-NOS 0.13.2.", "Release: FlyBrain-NOS 0.13.3.")
-    print("CHATGPT_BRIDGE_OVERLAY_APPLIED")
+    print("CHATGPT_MCP_BRIDGE_OVERLAY_APPLIED")
 
 if __name__ == "__main__":
     main()
