@@ -4,5 +4,12 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-17",
   "workers_dev": true,
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "ratelimits": [
+    {
+      "name": "FLYBRAIN_PUBLIC_LIMITER",
+      "namespace_id": 26111701,
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ]
 }
