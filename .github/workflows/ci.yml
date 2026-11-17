@@ -1,0 +1,61 @@
+name: FlyBrain Research Platform CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flybrain-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Extract release source
+        run: |
+          python -m zipfile -e FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip .release
+          test -d .release/FlyBrain_Research_Platform_v0.14.0
+
+      - name: Install packages
+        working-directory: .release/FlyBrain_Research_Platform_v0.14.0
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pip install -e ./components/URCAL
+          python -m pip install -e ./components/FlyBrain-NOS
+          python -m pip install -e ./adapters/FlyBrain-URCAL-Adapter
+
+      - name: Run URCAL tests
+        working-directory: .release/FlyBrain_Research_Platform_v0.14.0
+        run: python -m pytest -q components/URCAL/tests
+
+      - name: Run FlyBrain and URCAL integration tests
+        working-directory: .release/FlyBrain_Research_Platform_v0.14.0
+        run: python scripts/run_stack_tests.py --flybrain components/FlyBrain-NOS --urcal components/URCAL
+
+      - name: Compile and verify imports
+        working-directory: .release/FlyBrain_Research_Platform_v0.14.0
+        run: |
+          python -m compileall -q components/URCAL/urcal components/FlyBrain-NOS/flybrain_os adapters/FlyBrain-URCAL-Adapter
+          python -c "import urcal, flybrain_os, flybrain_urcal_adapter; print('ALL IMPORTS PASSED')"

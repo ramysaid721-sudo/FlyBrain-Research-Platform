@@ -1,1 +1,62 @@
-# FlyBrain-Research-Platform
+# FlyBrain Research Platform v0.14.0
+
+Integrated source release for **FlyBrain-NOS 0.13.3**, **URCAL 0.3.1**, and the **FlyBrain–URCAL Adapter 0.2.1**.
+
+## Source archive
+
+The complete source tree is distributed in:
+
+`FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip`
+
+The archive extracts to `FlyBrain_Research_Platform_v0.14.0/`.
+
+## Quick start
+
+From the repository root:
+
+```bash
+python -m zipfile -e FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip .
+cd FlyBrain_Research_Platform_v0.14.0
+python scripts/codespaces_bootstrap.py
+```
+
+The bootstrap script creates a local virtual environment, installs the project packages, runs the available tests, compiles modules, and performs import checks. It writes `SETUP_REPORT.json` and `SETUP_REPORT.md`.
+
+For a manual test run in an environment with dependencies installed:
+
+```bash
+python -m pytest -q components/URCAL/tests
+python scripts/run_stack_tests.py --flybrain components/FlyBrain-NOS --urcal components/URCAL
+```
+
+## Recorded validation baseline
+
+The release's pre-packaging validation record reports:
+
+- URCAL: **68 tests passed**.
+- FlyBrain-NOS with URCAL integration enabled: **76 tests passed**.
+- Python compilation: passed.
+- Import smoke test for URCAL, FlyBrain-NOS, and the adapter: passed.
+
+These are recorded release results. They are not represented as a fresh run on GitHub Actions or in a deployed Codespace.
+
+## Components and scope
+
+| Component | Version | Role |
+|---|---:|---|
+| FlyBrain-NOS | 0.13.3 | Connectome-aware research tooling, circuit analysis, evidence/provenance, synthetic temporal runtime, and model interfaces |
+| URCAL | 0.3.1 | Provider-neutral compute abstraction, policy and quota controls, audit trail, catalog, and local durable queue |
+| FlyBrain–URCAL Adapter | 0.2.1 | Bounded client integration between FlyBrain and URCAL |
+| NeuroResearch adapter | 0.2.1 specification | Contract/specification only; not an executable NRC integration |
+
+## Scientific and operational boundaries
+
+- Provider catalog entries are discovery metadata, not proof of live access, credentials, free quota, or successful external execution.
+- The NeuroResearch integration is specification-only because its source/runtime and schemas were not supplied.
+- FlyBrain's temporal/LIF components are synthetic engineering models, not biologically validated Drosophila simulations.
+- The local SQLite queue is single-host durable storage, not a distributed queue.
+- The included WSGI transport is a development interface, not a production-hardened public service.
+
+Production use requires separately configured authentication, TLS, reverse-proxy hardening, rate limiting, managed secrets, backups, monitoring, and operational testing. No credentials should be committed to this repository.
+
+See `FlyBrain_Research_Platform_v0.14.0/INSTALL_AR.md`, `SECURITY.md`, and `docs/RELEASE_AND_VALIDATION.md` in the extracted source tree for additional instructions.
