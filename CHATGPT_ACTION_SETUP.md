@@ -47,13 +47,15 @@ open the custom GPT that has this Action configured.
 
 ## Configure at least one ModelHub provider
 
-The bridge returns HTTP 503 until at least one supported provider is configured.
-Set the provider's model name and secret as environment variables in Render,
-for example OPENAI_MODEL plus OPENAI_API_KEY, or the equivalent pair for
-another provider supported by flybrain_os.model_hub. Do not commit secrets.
-External providers receive the question text; disclose this to users and only
-send information they are authorized to share. API usage may incur provider
-charges. Do not enable paid usage without an explicit budget decision.
+If no external provider is configured, the bridge still works in context-only
+mode: it retrieves relevant source-labelled excerpts from the checked-in
+FlyBrain-NOS and URCAL documentation and metadata. The connected ChatGPT model
+then synthesizes an answer from that returned context. This mode does not
+transmit the question to a third-party model provider from the Render service.
+Optionally, a provider such as OpenAI can be configured through its model name
+and secret environment variables; external providers then receive the question
+and API usage may incur charges. Do not enable paid usage without an explicit
+budget decision.
 
 ## Production requirements not included in the free prototype
 

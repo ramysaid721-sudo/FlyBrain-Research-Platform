@@ -9,9 +9,55 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
 from pathlib import Path
 from wsgiref.simple_server import make_server
 from .model_hub import ModelConsultation
+
+def retrieve_project_context(question: str, release_root: str | Path | None = None, limit: int = 6) -> list[dict]:
+    """Return ranked, source-labelled project excerpts without external APIs."""
+    root = Path(release_root) if release_root else Path(__file__).resolve().parents[3]
+    candidates = [
+        root / "README.md",
+        root / "components/FlyBrain-NOS/README.md",
+        root / "components/FlyBrain-NOS/docs",
+        root / "components/URCAL/README.md",
+        root / "components/URCAL/docs",
+        root / "components/FlyBrain-NOS/data/flywire_fafb_v783_source.json",
+    ]
+    files = []
+    for item in candidates:
+        if item.is_file():
+            files.append(item)
+        elif item.is_dir():
+            files.extend(sorted(item.rglob("*.md")))
+    terms = {x.lower() for x in re.findall(r"[\\w-]{3,}", question)}
+    ranked = []
+    for path in files:
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for paragraph in re.split(r"\\n\\s*\\n", raw):
+            clean = " ".join(paragraph.split())
+            if len(clean) < 45:
+                continue
+            words = {x.lower() for x in re.findall(r"[\\w-]{3,}", clean)}
+            overlap = len(terms & words)
+            if overlap:
+                ranked.append((overlap, min(len(clean), 1400), str(path.relative_to(root)), clean[:1400]))
+    ranked.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    seen, out = set(), []
+    for score, _, source, excerpt in ranked:
+        key = (source, excerpt[:160])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"source": source, "relevance_score": score, "excerpt": excerpt})
+        if len(out) >= limit:
+            break
+    return out
+
 
 class FlyBrainChatApp:
     def __init__(self, token: str, ledger_path: str | Path = "data/flybrain-chat.sqlite3"):
@@ -56,12 +102,18 @@ class FlyBrainChatApp:
                 timeout = data.get("timeout_seconds", 45)
                 if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 1 <= timeout <= 120:
                     return self._response(start_response, "400 Bad Request", {"error": "timeout_seconds must be between 1 and 120"})
-                result = self._consultation.consult(question.strip(), timeout=int(timeout))
+                context = retrieve_project_context(question.strip())
+                context_text = "\\n\\n".join(x["source"] + ": " + x["excerpt"] for x in context)
+                enriched_question = question.strip() + ("\\n\\nProject evidence context:\\n" + context_text if context_text else "")
+                result = self._consultation.consult(enriched_question, timeout=int(timeout))
                 if result["status"] == "no_providers_configured":
-                    return self._response(start_response, "503 Service Unavailable", {
-                        "status": result["status"],
-                        "message": "No ModelHub provider is configured. Configure a provider model and secret in the hosting environment.",
-                        "flybrain_scope": "The connectome and synthetic neural runtime are research tools; they are not a validated natural-language brain model.",
+                    return self._response(start_response, "200 OK", {
+                        "status": "context_only",
+                        "answer_candidates": [],
+                        "research_context": context,
+                        "message": "No external language provider is configured. Use the returned project evidence as context and let the connected ChatGPT model synthesize the response.",
+                        "scientific_scope": "The bundled connectome source file is metadata only; no FlyWire neuron/edge dataset is locally downloaded. The LIF runtime is synthetic and not biologically validated.",
+                        "external_data_transfer": False,
                     })
                 completed = [x for x in result.get("results", []) if x.get("status") == "completed"]
                 if not completed:
@@ -72,6 +124,7 @@ class FlyBrainChatApp:
                 return self._response(start_response, "200 OK", {
                     "status": result["status"],
                     "answer_candidates": [{"provider": x["provider"], "model": x["model"], "role": x["role"], "answer": x["response"]} for x in completed],
+                    "research_context": context,
                     "workflow": result.get("plan", {}).get("workflow", []),
                     "execution_policy": result.get("execution_policy"),
                     "scientific_scope": "FlyBrain-NOS orchestrates research consultation; its synthetic LIF runtime is not biologically validated and is not itself the natural-language answer generator.",

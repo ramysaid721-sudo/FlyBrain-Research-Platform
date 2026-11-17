@@ -46,6 +46,15 @@ paths:
                 type: object
                 properties:
                   status: { type: string }
+                  research_context:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        source: { type: string }
+                        relevance_score: { type: integer }
+                        excerpt: { type: string }
+                  message: { type: string }
                   answer_candidates:
                     type: array
                     items:

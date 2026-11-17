@@ -38,8 +38,10 @@ def test_ask_returns_clear_no_provider_state(tmp_path, monkeypatch):
         "status": "no_providers_configured", "results": [], "note": "none"})
     app = FlyBrainChatApp(token, tmp_path / "ledger.sqlite3")
     response, body = invoke(app, "POST", "/v1/ask", {"question": "What is a connectome?"}, token)
-    assert response["status"] == "503 Service Unavailable"
-    assert body["status"] == "no_providers_configured"
+    assert response["status"] == "200 OK"
+    assert body["status"] == "context_only"
+    assert body["external_data_transfer"] is False
+    assert "metadata only" in body["scientific_scope"]
 
 def test_ask_returns_gateway_error_when_all_providers_fail(tmp_path, monkeypatch):
     token = "x" * 40

@@ -8,7 +8,8 @@ Runtime: Python 3.13.5
 - Authenticated WSGI endpoint: GET /health, POST /v1/ask.
 - Bearer token must be at least 32 characters; request bodies and question length are bounded.
 - The bridge delegates to the existing FlyBrain-NOS ModelHub consultation workflow and returns only successful provider candidates.
-- No provider configured returns HTTP 503; all configured providers failing returns HTTP 502.
+- No provider configured returns HTTP 200 with source-labelled local documentation context; ChatGPT's own model can synthesize without a paid external provider.
+- When configured, external ModelHub providers receive the question plus retrieved context; failures return a gateway error.
 - OpenAPI contract for a custom GPT Action and Render Blueprint.
 - Overlay script copies the bridge and tests into the extracted release and corrects runtime version exports.
 
@@ -22,7 +23,7 @@ Runtime: Python 3.13.5
 
 ## Not yet deployed or connected
 - Render service has not been deployed; the Render app connection is not yet confirmed.
-- No ModelHub provider credentials are configured. Therefore the endpoint will correctly return HTTP 503 until one provider/model pair is configured.
+- No ModelHub provider credentials are configured. The no-provider context-only mode avoids external provider calls and returns local source excerpts; the connected ChatGPT model can synthesize them.
 - No ChatGPT custom GPT Action has been created or imported. The OpenAPI server URL is a placeholder until a deployed Render URL exists.
 - The Render free tier may sleep while idle and its /tmp database is ephemeral. This is not a 24/7 durable production service.
 - A custom GPT Action is only available inside that custom GPT; it cannot intercept the keyword in every normal ChatGPT conversation.
