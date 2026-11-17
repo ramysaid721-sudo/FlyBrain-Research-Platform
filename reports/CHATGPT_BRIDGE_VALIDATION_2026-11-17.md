@@ -22,7 +22,7 @@ Runtime: Python 3.13.5
 - TOML parsing and runtime version exports: passed (urcal 0.3.1, flybrain_os 0.13.3).
 
 ## Not yet deployed or connected
-- Render service has not been deployed; the Render app connection is not yet confirmed.
+- Render app connection is available. No Render service has been created or deployed yet; workspace confirmation is still required.
 - No ModelHub provider credentials are configured. The provider-free context-only mode avoids external provider calls and returns local source excerpts; a ChatGPT model can synthesize them when the endpoint is invoked through a supported integration.
 - No ChatGPT Action/app has been connected. Personal ChatGPT accounts cannot create new custom GPTs; custom MCP app eligibility is restricted by plan/workspace. The OpenAPI server URL is a placeholder until a deployed Render URL exists.
 - The Render free tier may sleep while idle and its /tmp database is ephemeral. This is not a 24/7 durable production service.

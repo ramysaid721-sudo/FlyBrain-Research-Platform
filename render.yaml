@@ -3,6 +3,7 @@ services:
     name: flybrain-chat-bridge
     runtime: python
     plan: free
+    region: frankfurt
     branch: main
     autoDeploy: true
     buildCommand: >-
