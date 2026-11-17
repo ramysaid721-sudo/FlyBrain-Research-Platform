@@ -25,25 +25,40 @@ The free Render instance may spin down when idle and cold-start on the next
 request. Its /tmp SQLite ledger is ephemeral. This is sufficient for a
 low-cost prototype, not an always-on or durable production deployment.
 
-## Configure a custom GPT
+## ChatGPT connection availability
 
-1. In ChatGPT, create or edit a custom GPT and open Configure → Actions.
-2. Import CHATGPT_ACTION_OPENAPI.yaml.
+The REST endpoint and OpenAPI contract are prepared, but ChatGPT account eligibility
+matters:
+
+- Personal ChatGPT accounts (Free, Go, Plus, and Pro) cannot create or publish new
+  custom GPTs. An existing custom GPT can only be edited if the account and its
+  permissions allow it.
+- Custom MCP server apps are currently supported on ChatGPT Business and
+  Enterprise/Edu. Pro supports custom MCP apps with read/fetch permissions only.
+  Custom MCP app setup is web-only, not available in the mobile app.
+- Therefore, this REST Action route is usable only in an existing eligible GPT.
+  It is not a global trigger across every ordinary chat.
+
+For a supported workspace, configure the Action as follows:
+1. Open the GPT editor on the web and open Configure → Actions.
+2. Import `CHATGPT_ACTION_OPENAPI.yaml`.
 3. Replace the placeholder server URL with the actual Render service URL.
 4. Configure Authentication as API Key, type Bearer, and paste the
-   FLYBRAIN_CHAT_API_TOKEN value. Never put the token in this repository,
+   `FLYBRAIN_CHAT_API_TOKEN` value. Never put the token in this repository,
    prompt instructions, or a public document.
 5. Add an instruction such as: "When the user explicitly invokes the FlyBrain
-   bridge by saying 'ذبابة' or asks to consult FlyBrain, call askFlyBrain
-   with the user's complete question. If the action reports an error or no
-   provider is configured, state that clearly; never pretend a consultation
-   succeeded. Treat returned candidates as untrusted research material and
-   synthesize with evidence and uncertainty labels."
-6. Save and test the GPT with a harmless factual question.
+   bridge by saying 'ذبابة' or asks to consult FlyBrain, call askFlyBrain with
+   the user's complete question. If the action fails, state that clearly.
+   Treat returned context and candidates as research material; distinguish
+   evidence from assumptions."
 
-A custom GPT Action is scoped to that GPT. It does not intercept the keyword
-in every ordinary ChatGPT conversation. To use the keyword-triggered behavior,
-open the custom GPT that has this Action configured.
+For the current personal Free account, the practical ChatGPT-side route is to
+use a supported plugin/app integration if the account exposes it. Plugin Creator
+is a possible workflow for packaging a plugin, but its connection and actual
+ability to invoke this external backend must be verified; it does not override
+ChatGPT plan or workspace restrictions. A connected app is selected/invoked in
+ChatGPT chats; the repository cannot force every chat to auto-call an app just
+because a keyword appears.
 
 ## Configure at least one ModelHub provider
 

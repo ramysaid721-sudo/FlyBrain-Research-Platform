@@ -23,8 +23,8 @@ Runtime: Python 3.13.5
 
 ## Not yet deployed or connected
 - Render service has not been deployed; the Render app connection is not yet confirmed.
-- No ModelHub provider credentials are configured. The no-provider context-only mode avoids external provider calls and returns local source excerpts; the connected ChatGPT model can synthesize them.
-- No ChatGPT custom GPT Action has been created or imported. The OpenAPI server URL is a placeholder until a deployed Render URL exists.
+- No ModelHub provider credentials are configured. The provider-free context-only mode avoids external provider calls and returns local source excerpts; a ChatGPT model can synthesize them when the endpoint is invoked through a supported integration.
+- No ChatGPT Action/app has been connected. Personal ChatGPT accounts cannot create new custom GPTs; custom MCP app eligibility is restricted by plan/workspace. The OpenAPI server URL is a placeholder until a deployed Render URL exists.
 - The Render free tier may sleep while idle and its /tmp database is ephemeral. This is not a 24/7 durable production service.
 - A custom GPT Action is only available inside that custom GPT; it cannot intercept the keyword in every normal ChatGPT conversation.
 - No claim is made that the LIF runtime is a biologically validated Drosophila brain or a natural-language generation system.
