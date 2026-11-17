@@ -1,0 +1,69 @@
+openapi: 3.1.0
+info:
+  title: FlyBrain Research Bridge
+  version: 1.0.0
+  description: >-
+    Authenticated research-consultation bridge to FlyBrain-NOS ModelHub.
+    The bridge orchestrates configured model providers; it is not a
+    biologically validated Drosophila brain or neural language model.
+servers:
+  - url: https://REPLACE-WITH-YOUR-RENDER-SERVICE.onrender.com
+paths:
+  /v1/ask:
+    post:
+      operationId: askFlyBrain
+      summary: Submit a research question to the FlyBrain research bridge
+      description: >-
+        Submit a question to the FlyBrain-NOS consultation workflow. The
+        service may return multiple independent answer candidates and
+        explicitly reports whether external model providers receive the text.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [question]
+              properties:
+                question:
+                  type: string
+                  minLength: 1
+                  maxLength: 12000
+                timeout_seconds:
+                  type: integer
+                  minimum: 1
+                  maximum: 120
+                  default: 45
+      responses:
+        '200':
+          description: Consultation completed; candidates are untrusted research inputs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  answer_candidates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider: { type: string }
+                        model: { type: string }
+                        role: { type: string }
+                        answer: { type: string }
+                  scientific_scope: { type: string }
+                  external_data_transfer: { type: boolean }
+        '400': { description: Invalid request }
+        '401': { description: Missing or invalid bearer token }
+        '502': { description: Consultation provider failure }
+        '503': { description: No ModelHub provider configured }
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-token

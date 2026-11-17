@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: flybrain-chat-bridge
+    runtime: python
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: >-
+      python -m zipfile -e FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip .release
+      && python scripts/apply_chat_bridge.py --source .release/FlyBrain_Research_Platform_v0.14.0
+      && python -m pip install --upgrade pip
+      && python -m pip install -e .release/FlyBrain_Research_Platform_v0.14.0/components/FlyBrain-NOS
+    startCommand: >-
+      PYTHONPATH=.release/FlyBrain_Research_Platform_v0.14.0/components/FlyBrain-NOS
+      python -m flybrain_os.chat_api
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: FLYBRAIN_CHAT_API_TOKEN
+        generateValue: true
+      - key: FLYBRAIN_CHAT_LEDGER
+        value: /tmp/flybrain-chat.sqlite3
