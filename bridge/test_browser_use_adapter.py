@@ -44,3 +44,49 @@ def test_completed_task_uses_browser_use_api(monkeypatch):
     assert result["status"] == "completed"
     assert result["steps"] == 2
     assert "Example Domain" in result["result"]
+
+
+def test_http_fetch_extracts_content_and_links(monkeypatch):
+    from flybrain_os import browser_use_adapter as adapter
+    html = '<html><head><title>Research Page</title><meta name="description" content="A useful source"></head><body><h1>Finding</h1><p>Evidence from a public page.</p><a href="https://example.org/source">Primary source</a></body></html>'
+    monkeypatch.setattr(adapter, "_http_get", lambda *a, **k: ("https://example.com/page", "text/html; charset=utf-8", html))
+    monkeypatch.setattr(adapter, "_validate_url", lambda url: url)
+    result = adapter.run_browser_fetch("https://example.com/page")
+    assert result["status"] == "completed"
+    assert result["title"] == "Research Page"
+    assert "Evidence from a public page" in result["content"]
+    assert result["links"][0]["url"] == "https://example.org/source"
+
+
+def test_public_web_search_extracts_results(monkeypatch):
+    from flybrain_os import browser_use_adapter as adapter
+    html = '<a class="result__a" href="https://example.org/paper">Research paper</a><a class="result__snippet">A peer reviewed result.</a>'
+    monkeypatch.setattr(adapter, "_http_get", lambda *a, **k: ("https://html.duckduckgo.com/html/", "text/html", html))
+    monkeypatch.setattr(adapter, "_validate_url", lambda url: url)
+    result = adapter.run_browser_search("test query", 3)
+    assert result["status"] == "completed"
+    assert result["results"][0]["title"] == "Research paper"
+    assert result["results"][0]["snippet"] == "A peer reviewed result."
+    assert result["results"][0]["url"] == "https://example.org/paper"
+
+
+def test_research_returns_exact_source_urls(monkeypatch):
+    from flybrain_os import browser_use_adapter as adapter
+    monkeypatch.setattr(adapter, "run_browser_search", lambda q, max_results: {
+        "status": "completed", "results": [{"title": "Paper", "url": "https://example.org/paper", "snippet": "Abstract", "source_domain": "example.org"}],
+        "search_engine": "test"
+    })
+    monkeypatch.setattr(adapter, "run_browser_fetch", lambda url, output_format, include_links: {
+        "status": "completed", "url": url, "title": "Paper title", "content": "Source evidence"
+    })
+    result = adapter.run_browser_research("research question", 2)
+    assert result["sources"][0]["url"] == "https://example.org/paper"
+    assert result["sources"][0]["page_excerpt"] == "Source evidence"
+
+
+def test_dns_private_address_is_blocked(monkeypatch):
+    import socket
+    from flybrain_os import browser_use_adapter as adapter
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 443))])
+    with pytest.raises(ValueError):
+        adapter._validate_url("https://public-looking.example/")
