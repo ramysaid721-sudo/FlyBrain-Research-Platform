@@ -26,7 +26,28 @@ class FlyBrainMCP:
             "structuredContent": data, "isError": is_error}}
 
     def __call__(self, env, start):
-        if env.get("PATH_INFO") != "/mcp":
+        path = env.get("PATH_INFO", "")
+        method = env.get("REQUEST_METHOD", "GET").upper()
+        if path == "/health" and method == "GET":
+            from .browser_use_adapter import browser_use_status
+            browser = browser_use_status()
+            return self.send(start, "200 OK", {
+                "status": "ok",
+                "service": "flybrain-mcp",
+                "version": "0.16.0",
+                "mcp_endpoint": "/mcp",
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task"],
+                "capabilities": {
+                    "project_retrieval": True,
+                    "public_web_search": True,
+                    "public_page_extraction": True,
+                    "multi_source_research": True,
+                    "interactive_browser": browser.get("interactive_browser_ready", False),
+                    "persistent_browser_profiles": False
+                },
+                "browser_status": browser
+            })
+        if path != "/mcp":
             return self.app(env, start)
         if env.get("REQUEST_METHOD", "GET").upper() != "POST":
             start("405 Method Not Allowed", [("Allow", "POST"), ("Content-Length", "0")])
