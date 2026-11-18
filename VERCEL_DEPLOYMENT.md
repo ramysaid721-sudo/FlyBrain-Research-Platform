@@ -5,14 +5,14 @@ This deployment replaces the Cloudflare Worker as the MCP gateway. The project u
 ## Endpoints
 
 - GET /health — unauthenticated health check
-- POST /mcp — Streamable HTTP MCP, protected by FLYBRAIN_CHAT_API_TOKEN
+- POST /mcp — Streamable HTTP MCP. Read-only methods/tools are public with a per-instance 60-requests-per-minute guard; interactive browser task calls require FLYBRAIN_CHAT_API_TOKEN.
 
 ## Deployment
 
 The Vercel project is `flybrain-research-mcp`. Connect this repository to that project or deploy the main branch through the Vercel API. The `api/index.py` entrypoint downloads the pinned v0.14.0 release archive, verifies its Git blob SHA-1, safely extracts it into `/tmp`, then overlays the current `bridge/chat_api.py`, `bridge/mcp_server.py`, and `bridge/browser_use_adapter.py` files from the deployment bundle.
 
 Required Vercel environment variable:
-- `FLYBRAIN_CHAT_API_TOKEN` — existing encrypted secret, minimum 32 characters.
+- `FLYBRAIN_CHAT_API_TOKEN` — existing encrypted secret, minimum 32 characters. It protects the internal REST bridge and interactive browser-task tool; do not embed it in the public plugin package.
 
 Optional:
 - `FLYBRAIN_CHAT_LEDGER` — defaults to `/tmp/flybrain-chat.sqlite3`. Vercel function filesystem is ephemeral; this is not durable task history.
