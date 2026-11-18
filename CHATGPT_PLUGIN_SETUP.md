@@ -17,9 +17,9 @@ The browser adapter is local-first: local Chromium plus an OpenAI-compatible loc
 
 OpenAI's Plugin Creator workflow is the supported starting point for creating a reusable plugin. Install/connect Plugin Creator, then start a chat with @plugin-creator. Ask it to create a plugin named FlyBrain and expose the six tools listed above through the authenticated MCP endpoint:
 
-https://YOUR-RENDER-SERVICE.onrender.com/mcp
+https://YOUR-FLYBRAIN-CLOUDFLARE-WORKER-URL/mcp
 
-Use Bearer authentication with the generated FLYBRAIN_CHAT_API_TOKEN. Store the token only in the app's designated secret/authentication field, never in instructions, a public document, or repository source.
+Use Bearer authentication with the separate FLYBRAIN_BROWSER_ACCESS_TOKEN stored in the Cloudflare Worker secret. The Worker forwards authorized browser calls to the private Python MCP backend using BROWSER_AUTOMATION_TOKEN. Never place either token in instructions, a public document, or repository source.
 
 The plugin should route the exact keyword "ذبابة" or an explicit request to consult FlyBrain to ask_flybrain. For web research, it should inspect browser_use_status first and use browser_search, browser_fetch, or browser_research only when the runtime is ready. For interactive tasks, use browser_run_task. If it is not ready, report that accurately; do not pretend the browser was launched.
 
@@ -54,7 +54,7 @@ Optional external model providers:
 
 The repository contains a Render Blueprint, but the last account inspection found no existing Render services, databases, or Key Value instances. No service has been created or deployed as part of this browser integration. The Render free service has not been proven suitable for hosting a local browser plus model. Do not create any paid resources without explicit approval.
 
-The Cloudflare Worker is a separate lightweight, read-only research endpoint; it cannot run the Python Chromium agent inside the Worker runtime. The Browser Use MCP tools are part of the Python bridge and become reachable only after that bridge is deployed and configured.
+The Cloudflare Worker is the public MCP gateway and cannot run the Python Chromium agent inside its runtime. It proxies browser tools to the private Python MCP backend after BROWSER_AUTOMATION_MCP_URL, BROWSER_AUTOMATION_TOKEN, and FLYBRAIN_BROWSER_ACCESS_TOKEN are configured. The repository contains the proxy code, but it is not live until the Worker is deployed and the backend is running.
 
 ## Safety and privacy
 
