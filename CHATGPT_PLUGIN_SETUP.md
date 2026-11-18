@@ -1,66 +1,80 @@
-# FlyBrain ChatGPT plugin and MCP connection
+# FlyBrain – ذبابة: ChatGPT connection and runtime status
 
-## MCP tools
+## Live MCP gateway
 
-The authenticated Streamable HTTP MCP bridge exposes six tools:
+The production MCP endpoint is hosted on Vercel, not Cloudflare:
 
-- ask_flybrain(question): retrieve source-labelled FlyBrain-NOS and URCAL project evidence.
-- browser_search(query, max_results): search public web results.
-- browser_fetch(url, output_format, include_links): extract content from a rendered public page.
-- browser_research(question, max_sources): inspect multiple sources and return a source-linked research report.
-- browser_use_status(): inspect the optional Browser Use dependency and model configuration.
-- browser_run_task(url, goal, max_steps, allow_side_effects): run a bounded browser task against an authorized public HTTPS website.
+- Health: https://flybrain-research-mcp.vercel.app/
+- Health details: https://flybrain-research-mcp.vercel.app/health
+- Streamable HTTP MCP: https://flybrain-research-mcp.vercel.app/mcp
 
-The browser adapter is local-first: local Chromium plus an OpenAI-compatible local model endpoint (Ollama by default). Search, fetch, and research tools use this same runtime. It is optional and is not activated merely by merging the code. A live run requires the pinned Browser Use dependency, Chromium, and a reachable model endpoint. Account changes, form submissions, purchases, publishing, deletion, uploads, deployments, and similar side effects require explicit approval.
+The ChatGPT plugin package `flybrain-zubaba` version `0.2.0` points to this endpoint using unauthenticated read-only MCP access. Do not add a bearer token to the plugin manifest or skill files.
 
-## ChatGPT app route
+## Available read-only tools
 
-OpenAI's Plugin Creator workflow is the supported starting point for creating a reusable plugin. Install/connect Plugin Creator, then start a chat with @plugin-creator. Ask it to create a plugin named FlyBrain and expose the six tools listed above through the authenticated MCP endpoint:
+- `ask_flybrain(question)`: retrieve source-labelled FlyBrain-NOS and URCAL project evidence.
+- `browser_search(query, max_results)`: search public web results through DuckDuckGo HTML.
+- `browser_fetch(url, output_format, include_links)`: extract readable text, page title, description, and links from a public HTTPS page.
+- `browser_research(question, max_sources)`: search and fetch up to six public sources; returns source excerpts and exact URLs for ChatGPT to synthesize.
+- `browser_use_status()`: report HTTP research readiness and interactive browser readiness separately.
 
-https://flybrain-research-mcp.vercel.app/mcp
+The public MCP surface includes `initialize`, `ping`, and `tools/list`. Public calls are guarded by a per-instance rate limit of 60 requests per minute. The rate limiter is not a distributed quota system and may reset when a serverless instance restarts.
 
-Use Bearer authentication with the separate FLYBRAIN_CHAT_API_TOKEN stored as an encrypted Vercel project environment variable. The MCP endpoint is hosted by Vercel Python Functions. Never place either token in instructions, a public document, or repository source.
+## Protected interactive automation
 
-The plugin should route the exact keyword "ذبابة" or an explicit request to consult FlyBrain to ask_flybrain. For web research, it should inspect browser_use_status first and use browser_search, browser_fetch, or browser_research only when the runtime is ready. For interactive tasks, use browser_run_task. If it is not ready, report that accurately; do not pretend the browser was launched.
+- `browser_run_task(url, goal, max_steps, allow_side_effects)` is present in the server tool catalogue but is not exposed through the public plugin connection.
+- It requires the server-held `FLYBRAIN_CHAT_API_TOKEN`, Browser Use, Chromium, and a reachable configured model on a compatible browser host.
+- The current Vercel deployment reports `interactive_browser_ready=false`; Browser Use is not installed in that serverless runtime.
+- No persistent browser profiles, authenticated sessions, durable background jobs, scheduled monitors, or interactive JavaScript browser automation are currently active.
 
-Important: direct custom remote MCP server connections are currently limited by ChatGPT plan and app support. Plugin Creator must determine the supported hosting and connection route for this account. Review the generated tool schema and test it before use.
+Do not claim that the service has TinyFish-equivalent browser automation until a separate browser worker has been deployed and tested.
 
-## Browser automation setup
+## Runtime architecture
 
-Install the optional dependency from the repository root:
+```text
+ChatGPT plugin: FlyBrain – ذبابة
+           |
+           | public, read-only MCP over HTTPS
+           v
+Vercel Python Function
+           |
+           +--> FlyBrain-NOS / URCAL project retrieval
+           +--> Public web search (DuckDuckGo HTML)
+           +--> Safe HTTPS page extraction
+           +--> Multi-source evidence collection
+           |
+           +--> Protected browser_run_task (not active)
+                Requires separate browser host + model
+```
 
-~~~bash
-python -m pip install -r requirements-browser-use.txt
-uvx browser-use install
-~~~
+The Vercel function downloads the pinned FlyBrain v0.14.0 release archive, verifies its Git blob SHA-1, safely extracts it into temporary storage, and overlays the current bridge files from the deployment bundle. The `FLYBRAIN_CHAT_API_TOKEN` environment variable is encrypted in Vercel and is never included in the public plugin package.
 
-For a local Ollama model, configure the FlyBrain service process with:
+## Browser worker options
 
-~~~bash
-BROWSER_USE_PROVIDER=ollama
-BROWSER_USE_BASE_URL=http://127.0.0.1:11434/v1
-BROWSER_USE_MODEL=qwen2.5:7b
-BROWSER_USE_API_KEY=ollama
-~~~
+The repository includes the optional Browser Use adapter and a pinned dependency file. A separate worker needs:
+- Browser Use and Chromium installed.
+- A reachable model endpoint (local Ollama or a separately authorized external provider).
+- An HTTPS MCP backend URL and a server-side bearer token.
+- A compatible host with enough memory and stable process lifetime for browser sessions.
 
-Ollama and the selected model must run in the same host/network namespace as the FlyBrain service. A local Ollama endpoint on a phone or laptop is not automatically reachable from Render. Do not expose Ollama publicly.
+Render was inspected previously and had no services, databases, or Key Value stores. No Render service, database, hosted model, or paid browser was created. Do not provision paid resources without separate approval. Vercel serverless functions are not a persistent Chromium/Ollama host.
 
-Optional external model providers:
-- OpenAI: BROWSER_USE_PROVIDER=openai and OPENAI_API_KEY.
-- Google: BROWSER_USE_PROVIDER=google and GOOGLE_API_KEY.
-- Browser Use hosted model/browser: BROWSER_USE_PROVIDER=browser-use-cloud, BROWSER_USE_API_KEY, and BROWSER_USE_ALLOW_CLOUD=true. This may incur charges and is disabled by default.
+## Safety
 
-## Deployment status and limits
-
-The repository contains a Render Blueprint, but the last account inspection found no existing Render services, databases, or Key Value instances. No service has been created or deployed as part of this browser integration. The Render free service has not been proven suitable for hosting a local browser plus model. Do not create any paid resources without explicit approval.
-
-The Cloudflare Worker is the public MCP gateway and cannot run the Python Chromium agent inside its runtime. It proxies browser tools to the private Python MCP backend after BROWSER_AUTOMATION_MCP_URL, BROWSER_AUTOMATION_TOKEN, and FLYBRAIN_BROWSER_ACCESS_TOKEN are configured. The repository contains the proxy code, but it is not live until the Worker is deployed and the backend is running.
-
-## Safety and privacy
-
-- Use only accounts and websites the user is authorized to access.
+- Public plugin tools are read-only. They must not submit forms, change accounts, publish, delete, purchase, deploy, or retrieve secrets.
+- Interactive browser actions require separate bearer authentication and explicit approval for state-changing goals.
+- Only use sites and accounts the user is authorized to access.
 - Never bypass CAPTCHAs, paywalls, authentication, or access controls.
-- Never commit passwords, cookies, TOTP seeds, browser profiles, or API tokens.
-- Require explicit user approval before any state-changing action.
-- Browser automation tasks may expose page content to the configured model provider. Review the model endpoint and privacy policy before enabling it.
-- Without a model provider, Browser Use cannot execute natural-language tasks. The research-only ask_flybrain tool remains independently usable.
+- Do not expose passwords, cookies, API keys, browser profiles, or private account data to page content or model providers.
+- HTTP extraction does not execute JavaScript and may not capture content loaded dynamically by a website.
+- ChatGPT synthesizes the retrieved evidence; the MCP server is a retrieval and automation interface, not a standalone language model.
+- Do not describe the synthetic LIF runtime as a biologically validated complete Drosophila brain or a standalone language model.
+
+## Plugin behavior
+
+When the user says `ذبابة` in a FlyBrain/URCAL context:
+1. Call `ask_flybrain` with the actual question.
+2. For current public-web information, call `browser_search`; for a known URL, call `browser_fetch`.
+3. For multi-source research, call `browser_research` and synthesize its returned excerpts in ChatGPT.
+4. Preserve exact source paths and URLs. Distinguish documented project facts, externally retrieved evidence, interpretation, hypotheses, and recommendations.
+5. If a tool returns no evidence or a fetch fails, report that accurately rather than inventing results.
