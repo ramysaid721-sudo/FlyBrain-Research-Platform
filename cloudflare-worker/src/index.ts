@@ -132,7 +132,7 @@ async function handleMcp(request: Request, env: Env): Promise<Response> {
     if (typeof name === "string" && name.startsWith("browser_")) {
       const allowedBrowserTools = new Set(["browser_use_status", "browser_search", "browser_fetch", "browser_research", "browser_run_task"]);
       if (!allowedBrowserTools.has(name)) return error(rpc.id, -32602, "Unknown browser tool");
-      const supplied = (request.headers.get("authorization") ?? "").replace(/^Bearer\\s+/i, "");
+      const supplied = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
       const expected = env.FLYBRAIN_BROWSER_ACCESS_TOKEN ?? "";
       let diff = supplied.length ^ expected.length;
       for (let i = 0; i < Math.max(supplied.length, expected.length); i++) {
