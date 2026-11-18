@@ -8,7 +8,7 @@ The authenticated Streamable HTTP MCP bridge exposes three tools:
 - browser_use_status(): inspect the optional Browser Use dependency and model configuration.
 - browser_run_task(url, goal, max_steps, allow_side_effects): run a bounded browser task against an authorized public HTTPS website.
 
-The browser adapter is local-first: local Chromium plus an OpenAI-compatible local model endpoint (Ollama by default). It is optional and is not activated merely by merging the code. A live run requires the pinned Browser Use dependency, Chromium, and a reachable model endpoint. Account changes, form submissions, purchases, publishing, deletion, uploads, deployments, and similar side effects require explicit approval.
+The browser adapter is local-first: local Chromium plus an OpenAI-compatible local model endpoint (Ollama by default). Search, fetch, and research tools use this same runtime. It is optional and is not activated merely by merging the code. A live run requires the pinned Browser Use dependency, Chromium, and a reachable model endpoint. Account changes, form submissions, purchases, publishing, deletion, uploads, deployments, and similar side effects require explicit approval.
 
 ## ChatGPT app route
 
