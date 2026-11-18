@@ -39,6 +39,7 @@ def test_completed_task_uses_browser_use_api(monkeypatch):
     fake.Agent, fake.Browser, fake.ChatOpenAI = FakeAgent, FakeBrowser, FakeChatOpenAI
     fake.__version__ = "1.0.0"
     monkeypatch.setitem(sys.modules, "browser_use", fake)
+    monkeypatch.setattr("flybrain_os.browser_use_adapter.browser_use_status", lambda: {"installed": True, "version": "1.0.0", "provider": "ollama", "ready": True, "browser_mode": "local Chromium"})
     result = run_browser_task("https://example.com", "Read the page title", max_steps=3)
     assert result["status"] == "completed"
     assert result["steps"] == 2
