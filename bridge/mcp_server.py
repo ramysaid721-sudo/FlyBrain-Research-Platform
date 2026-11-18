@@ -4,7 +4,7 @@ import hmac, io, json, os, time
 from collections import defaultdict, deque
 from threading import Lock
 from wsgiref.simple_server import make_server
-from .chat_api import FlyBrainChatApp
+from .chat_api import FlyBrainChatApp\nfrom .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -40,7 +40,7 @@ class FlyBrainMCP:
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
@@ -71,7 +71,7 @@ class FlyBrainMCP:
             params = req.get("params") or {}
             tool_name = params.get("name") if method == "tools/call" else None
             public_methods = {"initialize", "ping", "tools/list"}
-            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status"}
+            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool"}
             public_request = method in public_methods or (method == "tools/call" and tool_name in public_tools)
             if not public_request and not hmac.compare_digest(supplied, self.token):
                 return self.send(start, "401 Unauthorized", {"error": "unauthorized"})
@@ -116,6 +116,22 @@ class FlyBrainMCP:
                      "description": "Check interactive Browser Use readiness separately from the HTTP search and fetch capabilities. This does not launch a browser.",
                      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "tool_manager_status", "title": "Tool lifecycle manager status",
+                     "description": "Report the FlyBrain tool manager mode, security controls, and whether an isolated installation worker is available.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "tool_catalog", "title": "Approved tool candidates",
+                     "description": "List narrowly allowlisted low-risk tool candidates and blocked high-impact examples. Does not install tools.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "assess_tool", "title": "Assess a tool candidate",
+                     "description": "Apply FlyBrain's fail-closed policy to a candidate package. Assessment never installs or executes the candidate.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "name": {"type": "string", "minLength": 1, "maxLength": 100},
+                         "version": {"type": "string", "maxLength": 80},
+                         "source": {"type": "string", "maxLength": 300}},
+                         "required": ["name"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -130,6 +146,22 @@ class FlyBrainMCP:
                 p = req.get("params") or {}
                 args = p.get("arguments") or {}
                 name = p.get("name")
+                if name == "tool_manager_status":
+                    if args:
+                        raise ValueError("tool_manager_status accepts no arguments")
+                    return self.send(start, "200 OK", self._tool_result(mid, tool_manager_status()))
+                if name == "tool_catalog":
+                    if args:
+                        raise ValueError("tool_catalog accepts no arguments")
+                    return self.send(start, "200 OK", self._tool_result(mid, tool_catalog()))
+                if name == "assess_tool":
+                    if set(args) - {"name", "version", "source"} or not isinstance(args.get("name"), str):
+                        raise ValueError("assess_tool requires name and accepts only version/source")
+                    try:
+                        assessed = assess_tool(args["name"], args.get("version", ""), args.get("source", ""))
+                    except ToolPolicyError as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, assessed, assessed.get("status") == "blocked"))
                 if name == "ask_flybrain":
                     q = args.get("question")
                     if not isinstance(q, str) or not q.strip() or len(q) > 12000:
