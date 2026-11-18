@@ -252,15 +252,18 @@ export default {
     if (!env.FLYBRAIN_BROWSER_API_TOKEN) return json({ error: "server_auth_not_configured" }, 503);
     const auth = request.headers.get("authorization") || "";
     const supplied = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    if (!supplied || supplied.length !== env.FLYBRAIN_BROWSER_API_TOKEN.length || !crypto.subtle.timingSafeEqual) {
-      // Compare using Web Crypto; never log or return either token.
-      if (!supplied || supplied !== env.FLYBRAIN_BROWSER_API_TOKEN) return json({ error: "unauthorized" }, 401);
-    } else {
-      const encoder = new TextEncoder();
-      const a = encoder.encode(supplied);
-      const b = encoder.encode(env.FLYBRAIN_BROWSER_API_TOKEN);
-      if (a.length !== b.length || !crypto.subtle.timingSafeEqual(a, b)) return json({ error: "unauthorized" }, 401);
-    }
+    const expected = env.FLYBRAIN_BROWSER_API_TOKEN;
+    if (!supplied || supplied.length > 4096) return json({ error: "unauthorized" }, 401);
+    const encoder = new TextEncoder();
+    const [suppliedDigest, expectedDigest] = await Promise.all([
+      crypto.subtle.digest("SHA-256", encoder.encode(supplied)),
+      crypto.subtle.digest("SHA-256", encoder.encode(expected))
+    ]);
+    const a = new Uint8Array(suppliedDigest);
+    const b = new Uint8Array(expectedDigest);
+    let mismatch = 0;
+    for (let i = 0; i < a.length; i++) mismatch |= a[i] ^ b[i];
+    if (mismatch !== 0) return json({ error: "unauthorized" }, 401);
     const length = Number(request.headers.get("content-length") || 0);
     if (length > MAX_BODY) return json({ error: "request_too_large" }, 413);
     if (!(request.headers.get("content-type") || "").includes("application/json")) return json({ error: "content_type_must_be_application_json" }, 415);
