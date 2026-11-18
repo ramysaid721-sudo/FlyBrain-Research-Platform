@@ -86,3 +86,20 @@ def test_public_mcp_rate_limit(tmp_path):
         assert response["status"]=="200 OK"
     response,_=call(app,request,"")
     assert response["status"]=="429 Too Many Requests"
+
+
+def test_root_path_is_a_public_health_check(tmp_path,monkeypatch):
+    token="z"*40
+    monkeypatch.setattr("flybrain_os.browser_use_adapter.browser_use_status",lambda:{
+        "installed":False,"ready":False,"interactive_browser_ready":False,
+        "web_search_ready":True,"web_fetch_ready":True,"provider":"ollama"
+    })
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    env={"REQUEST_METHOD":"GET","PATH_INFO":"/","CONTENT_LENGTH":"0"}
+    captured={}
+    def start(status,headers): captured["status"]=status
+    body=b"".join(app(env,start))
+    payload=json.loads(body)
+    assert captured["status"]=="200 OK"
+    assert payload["service"]=="flybrain-mcp"
+    assert payload["version"]=="0.16.0"
