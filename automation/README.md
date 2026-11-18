@@ -11,14 +11,14 @@ This layer is designed to replace the capabilities needed from TinyFish with an 
 | Deterministic browser scripts and regression tests | Playwright | Existing workflow; its CI run still needs diagnosis |
 | Browser screenshots and step traces | Browser Use history + Playwright artifacts | Not yet exposed as MCP outputs |
 | Structured extraction | Browser Use task result | Initial text-result adapter |
-| Search and multi-page research | Search provider + fetch/extract pipeline | Planned; Browser Use alone does not provide a full search index |
-| Rendered page fetch (Markdown/HTML/JSON) | Browser rendering + extraction | Planned dedicated MCP tools |
+| Search and multi-page research | browser_search + browser_research over a rendered search page | Initial MCP tools added; live runtime not yet activated |
+| Rendered page fetch (Markdown/HTML/JSON-like) | browser_fetch over a rendered page | Initial MCP tool added; output format is agent-generated text |
 | Authenticated sessions and reusable profiles | Isolated browser profile store | Not implemented; no credentials are stored by this adapter |
 | Run status, history, cancellation and retries | Persistent task registry | Planned |
 | Parallel multi-site workflows | Bounded worker pool | Planned |
 | Monitoring and change alerts | Scheduler + snapshots + diff engine | Planned |
 | Enrichment and dataset exports | Research pipeline + CSV/JSON export | Planned |
-| MCP access | FlyBrain MCP tools | Initial browser_run_task and browser_use_status tools added |
+| MCP access | FlyBrain MCP tools | browser_search, browser_fetch, browser_research, browser_run_task, and browser_use_status tools added |
 
 ## Browser Use adapter
 
@@ -72,7 +72,7 @@ The adapter does not bypass CAPTCHAs, paywalls, authentication, or access contro
 ## Remaining work before claiming TinyFish replacement
 
 - Add a persistent task store with task IDs, status, retries, cancellation, screenshots, and audit events.
-- Add dedicated search, rendered fetch, multi-source research, structured extraction, and source citation tools.
+- Strengthen search/fetch/research with deterministic parsing, schema validation, citation verification, and structured output.
 - Add isolated authenticated browser profiles with a credential vault and explicit access controls.
 - Add parallel execution with concurrency and domain rate limits.
 - Add monitoring schedules, page snapshots, diffs, and alert delivery.
