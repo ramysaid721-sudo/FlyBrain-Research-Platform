@@ -111,3 +111,54 @@ def run_browser_task(url: str, goal: str, max_steps: int = 12, allow_side_effect
     except Exception as exc:
         return {"status": "error", "url": target, "goal": goal.strip(),
                 "error": f"{type(exc).__name__}: {str(exc)[:1200]}", "provider": status["provider"]}
+
+def run_browser_search(query: str, max_results: int = 8) -> dict:
+    """Search the public web through a rendered search results page."""
+    from urllib.parse import quote_plus
+    if not isinstance(query, str) or not query.strip() or len(query) > 1500:
+        raise ValueError("query must be a non-empty string of at most 1500 characters")
+    if isinstance(max_results, bool) or not isinstance(max_results, int) or not 1 <= max_results <= 20:
+        raise ValueError("max_results must be between 1 and 20")
+    target = "https://html.duckduckgo.com/html/?q=" + quote_plus(query.strip())
+    goal = (
+        f"Search the web for: {query.strip()}. Inspect the search results page and return up to {max_results} "
+        "relevant results as JSON objects with title, url, snippet, and source_domain. "
+        "Do not open ads. Prefer primary or authoritative sources and preserve the exact URLs."
+    )
+    result = run_browser_task(target, goal, max_steps=12)
+    result["query"] = query.strip()
+    return result
+
+
+def run_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
+    """Fetch and extract rendered page content from a public HTTPS page."""
+    if output_format not in {"markdown", "text", "json"}:
+        raise ValueError("output_format must be markdown, text, or json")
+    if not isinstance(include_links, bool):
+        raise ValueError("include_links must be boolean")
+    goal = (
+        f"Read the page at the target URL and extract its main content in {output_format} format. "
+        "Preserve headings, dates, tables, and factual details. "
+        + ("Include relevant source links with their exact URLs." if include_links else "Do not include a link list.")
+        + " Do not infer missing facts; report if the page is blocked or unavailable."
+    )
+    return run_browser_task(url, goal, max_steps=10)
+
+
+def run_browser_research(question: str, max_sources: int = 6) -> dict:
+    """Perform a multi-source browser research task with explicit source URLs."""
+    if not isinstance(question, str) or not question.strip() or len(question) > 4000:
+        raise ValueError("question must be a non-empty string of at most 4000 characters")
+    if isinstance(max_sources, bool) or not isinstance(max_sources, int) or not 2 <= max_sources <= 12:
+        raise ValueError("max_sources must be between 2 and 12")
+    from urllib.parse import quote_plus
+    target = "https://html.duckduckgo.com/html/?q=" + quote_plus(question.strip())
+    goal = (
+        f"Research this question: {question.strip()}. Search for at least {max_sources} independent, relevant "
+        "sources where available. Open the strongest sources, prioritize primary research and official documents, "
+        "cross-check key claims, and return a concise report with claim, evidence, publication date when available, "
+        "source title, and exact source URL. Separate established facts from uncertainty. Never invent citations."
+    )
+    result = run_browser_task(target, goal, max_steps=24)
+    result["question"] = question.strip()
+    return result
