@@ -9,7 +9,7 @@ The production MCP gateway has been migrated from Cloudflare Worker to the exist
 - POST /mcp — stateless Streamable HTTP MCP endpoint.
 - Plugin connection: https://flybrain-research-mcp.vercel.app/mcp
 
-Production deployment is currently aliased to `flybrain-research-mcp.vercel.app` and runs in region `fra1`. The latest confirmed production deployment is `dpl_GYi144aUQq74qutC8B12bgSeN7R9`, state `READY`, version `0.16.0`.
+Production deployment is currently aliased to `flybrain-research-mcp.vercel.app` and runs in region `fra1`. The latest confirmed production deployment is `dpl_8GHYMhrheq6pBMwbyV1qbkTXe6iU`, state `READY`, version `0.16.0`.
 
 ## Authentication and public access
 
@@ -56,6 +56,6 @@ Those capabilities require a separately deployed browser worker and durable stat
 
 The production build completed successfully using Python 3.13. The public root and `/health` endpoints were fetched and returned the expected service status and capability list. Runtime logs show successful HTTP 200 responses.
 
-GitHub Actions currently fails before any job steps are created (runner ID/name and step list are empty). This is an infrastructure/runner-stage failure, not evidence that the Python test suite passed or failed. The test suite remains unverified in GitHub Actions. Do not claim test success until a job actually executes its steps.
+GitHub Actions run `44292586598` on the current main commit failed before any job steps were created (runner ID/name and step list are empty). This is an infrastructure/runner-stage failure, not evidence that the Python test suite passed or failed. The test suite remains unverified in GitHub Actions. Do not claim test success until a job actually executes its steps.
 
 No paid resources or new storage services are provisioned by this deployment.
