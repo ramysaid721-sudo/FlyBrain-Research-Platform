@@ -1,41 +1,67 @@
 # FlyBrain Cloudflare Worker
 
-This directory contains the Cloudflare-native MCP HTTP bridge. It does not run the Python WSGI server or claim to emulate a biological fly brain. It retrieves source-labelled project excerpts from the public repository and returns them to ChatGPT for synthesis.
+This directory contains the Cloudflare-native MCP HTTP gateway. It retrieves source-labelled project excerpts and can securely proxy browser automation requests to the authenticated Python FlyBrain MCP bridge. It does not run Chromium or a Python model inside the Worker runtime.
 
 ## Cloudflare Workers Builds settings
 
-- Root directory: `cloudflare-worker`
+- Root directory: cloudflare-worker
 - Build command: leave blank
-- Deploy command: `npx wrangler deploy`
+- Deploy command: npx wrangler deploy
 - Preview builds: optional; leave disabled for the first deployment
 
 ## Endpoints and access model
 
-- `GET /health`
-- `POST /mcp` (public, read-only MCP Streamable HTTP)
+- GET /health
+- POST /mcp
 
-The only exposed tool is `ask_flybrain(question)`. It retrieves excerpts from the three public project README files. It cannot write, edit, delete, access private repositories, or access Cloudflare account settings. No production API token or paid model provider is required.
+The MCP catalog exposes six tools:
+- ask_flybrain(question): public read-only project retrieval.
+- browser_use_status(): checks the Browser Use service through the authenticated backend.
+- browser_search(query, max_results): public web search through the rendered browser agent.
+- browser_fetch(url, output_format, include_links): rendered page extraction.
+- browser_research(question, max_sources): multi-source research with source URLs.
+- browser_run_task(url, goal, max_steps, allow_side_effects): bounded interactive browser workflow.
 
-The MCP endpoint applies a Cloudflare rate-limit binding configured for approximately 30 requests per minute per client IP and rejects declared request bodies larger than 64 KiB. Cloudflare documents that this rate limiter is approximate and is enforced separately in each Cloudflare location; it is a protective throttle, not a strict global quota. Public access means anyone who discovers the endpoint can call this read-only tool.
+The research tool remains public and read-only. All browser_* calls require a separate Bearer token and are forwarded to the authenticated Python MCP backend. This prevents anonymous visitors from using browser resources or the configured model.
 
-Cloudflare Workers Free currently documents a limit of 100,000 requests per day. Monitor usage in the Cloudflare dashboard; do not upgrade to a paid plan for this project without a separate explicit decision.
+## Browser proxy configuration
 
-## Playwright browser automation and tests
+The Worker must have these three environment values/secrets before browser tools can run:
 
-Playwright is configured in this directory to automate Chromium and verify the local Worker before deployment.
+- FLYBRAIN_BROWSER_ACCESS_TOKEN: separate secret used by the ChatGPT plugin to authorize browser_* calls to this Worker.
+- BROWSER_AUTOMATION_MCP_URL: HTTPS URL of the Python MCP backend, ending in /mcp.
+- BROWSER_AUTOMATION_TOKEN: Bearer token accepted by the Python backend (the backend's FLYBRAIN_CHAT_API_TOKEN).
 
-```bash
+Keep all tokens in Cloudflare Worker secrets, not in wrangler.jsonc or Git. The ChatGPT plugin must send FLYBRAIN_BROWSER_ACCESS_TOKEN as its Bearer credential. The Worker then uses BROWSER_AUTOMATION_TOKEN for the backend hop. Do not reuse the public research endpoint as the private browser backend.
+
+Until the Python backend is deployed and all three values are configured, browser tools return a clear not-configured/unauthorized response. The current repository does not contain a deployed Browser Use backend; no Render service or paid resource is created by this change.
+
+## Backend requirements
+
+The Python backend must use the FlyBrain bridge from the repository root and install the optional dependency:
+
+~~~bash
+python -m pip install -r requirements-browser-use.txt
+uvx browser-use install
+~~~
+
+Local-first model settings use an Ollama-compatible endpoint reachable from the same host/network namespace as the Python service. A Render service cannot reach Ollama running on a phone or laptop at 127.0.0.1. Do not expose a local model endpoint to the public internet. Cloud model/browser providers are opt-in and may incur charges.
+
+See automation/README.md and CHATGPT_PLUGIN_SETUP.md for provider setup and the remaining capability roadmap.
+
+## Rate limits and tests
+
+The MCP endpoint applies a Cloudflare rate-limit binding configured for approximately 30 requests per minute per client IP. The Worker rejects declared request bodies larger than 64 KiB. Public access means anyone who discovers the endpoint can call the read-only research tool; browser tools additionally require the dedicated Bearer token.
+
+Cloudflare Workers Free currently documents a limit of 100,000 requests per day. Monitor usage in the dashboard; do not upgrade to a paid plan for this project without a separate explicit decision.
+
+Playwright checks:
+
+~~~bash
 npm install
 npx playwright install chromium
 npm run typecheck
 npm run test:e2e
-```
+~~~
 
-Useful interactive modes:
-
-```bash
-npm run test:e2e:headed
-npm run test:e2e:ui
-```
-
-The Playwright configuration starts a local Wrangler Worker automatically. Tests cover the browser-visible health endpoint, unauthenticated MCP initialization, the read-only tool list, and retrieval from the public repository. They do not sign in to or change Cloudflare Dashboard settings.
+The tests cover the health endpoint, unauthenticated MCP initialization, the six-tool catalog, public read-only research retrieval, and rejection of unauthenticated browser-tool calls.
