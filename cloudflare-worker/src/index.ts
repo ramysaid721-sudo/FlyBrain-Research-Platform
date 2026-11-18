@@ -13,8 +13,11 @@ const REPOSITORY = "ramysaid721-sudo/FlyBrain-Research-Platform";
 const BRANCH = "main";
 const SOURCES = [
   "README.md",
-  "components/FlyBrain-NOS/README.md",
-  "components/URCAL/README.md"
+  "CHATGPT_PLUGIN_SETUP.md",
+  "CHATGPT_ACTION_SETUP.md",
+  "VERCEL_DEPLOYMENT.md",
+  "reports/CHATGPT_BRIDGE_VALIDATION_2026-11-17.md",
+  "reports/VALIDATION_2026-11-17.md"
 ];
 
 type JsonRpc = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: any };

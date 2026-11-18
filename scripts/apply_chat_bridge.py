@@ -11,6 +11,7 @@ PATCHES = {
     ROOT / "bridge" / "mcp_server.py": Path("components/FlyBrain-NOS/flybrain_os/mcp_server.py"),
     ROOT / "bridge" / "test_mcp_server.py": Path("components/FlyBrain-NOS/tests/test_mcp_server.py"),
     ROOT / "bridge" / "browser_use_adapter.py": Path("components/FlyBrain-NOS/flybrain_os/browser_use_adapter.py"),
+    ROOT / "bridge" / "tool_manager.py": Path("components/FlyBrain-NOS/flybrain_os/tool_manager.py"),
     ROOT / "bridge" / "test_browser_use_adapter.py": Path("components/FlyBrain-NOS/tests/test_browser_use_adapter.py"),
 }
 
