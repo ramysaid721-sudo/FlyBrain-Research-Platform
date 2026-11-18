@@ -92,13 +92,13 @@ class FlyBrainMCP:
                 version = requested if requested in {"2024-11-05", "2025-03-26", "2025-06-18"} else "2025-03-26"
                 result = {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}},
                           "serverInfo": {"name": "flybrain-research-bridge", "version": "0.16.0"},
-                          "instructions": "Use ask_flybrain for source-labelled project evidence. Use browser_search, browser_fetch, and browser_research for public HTTP search and page extraction. These do not require a JavaScript browser or external model. Use browser_use_status to inspect the optional interactive Browser Use agent; browser_run_task requires a separately configured browser host and model. Side effects require explicit approval. Distinguish retrieved evidence from inference."}
+                          "instructions": "Call ask_flybrain automatically for any request that depends on FlyBrain-NOS, URCAL, the FlyBrain project repository, its architecture, implementation, status, evidence, integrations, or project decisions, even if the user does not type the words FlyBrain or ذبابة. Do not call it for unrelated general questions. Use browser_search, browser_fetch, and browser_research for public HTTP research and page extraction; these do not execute JavaScript. Use browser_use_status to inspect interactive browser readiness; browser_run_task requires a separately configured browser host, model, and token. Apply least privilege. Passive reconnaissance and defensive analysis must stay within authorized assets; active scans and exploit validation require explicit scope and approval. Side effects require explicit approval. Distinguish retrieved evidence from inference and report capability limitations honestly."}
             elif method == "ping":
                 result = {}
             elif method == "tools/list":
                 result = {"tools": [
                     {"name": "ask_flybrain", "title": "Ask FlyBrain research system",
-                     "description": "Retrieve source-labelled FlyBrain-NOS and URCAL context and optionally consult configured ModelHub providers.",
+                     "description": "Automatically use this tool whenever a user asks about FlyBrain, FlyBrain-NOS, URCAL, the Gaza Jar research context explicitly linked to this project, its architecture, code, capabilities, status, evidence, integrations, or next steps—even when the user does not say “FlyBrain” or “ذبابة”. Retrieve source-labelled project evidence and distinguish documented facts from inference.",
                      "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "minLength": 1, "maxLength": 12000}}, "required": ["question"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "browser_search", "title": "Search the public web",
