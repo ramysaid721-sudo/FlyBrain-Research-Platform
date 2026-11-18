@@ -66,7 +66,7 @@ jobs:
                 (.result.bindings // []) |
                 if length == 0 then "No bindings returned."
                 else
-                  .[] | "- name: (.name // "unnamed") | type: (.type // "unknown")"
+                  .[] | "- name: " + (.name // "unnamed") + " | type: " + (.type // "unknown")
                 end
               ' /tmp/settings.json
               echo
@@ -85,7 +85,7 @@ jobs:
             if [[ "${deployments_code}" == "200" ]] && jq -e '.success == true' /tmp/deployments.json >/dev/null; then
               jq -r '
                 (.result // [])[:10][] |
-                "- id: (.id // "unknown") | created_on: (.created_on // "unknown") | source: (.source // "unknown") | strategy: (.strategy // "unknown")"
+                "- id: " + (.id // "unknown") + " | created_on: " + (.created_on // "unknown") + " | source: " + (.source // "unknown") + " | strategy: " + (.strategy // "unknown")
               ' /tmp/deployments.json
             else
               jq '{success, errors, messages}' /tmp/deployments.json
