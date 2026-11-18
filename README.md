@@ -67,7 +67,7 @@ See `FlyBrain_Research_Platform_v0.14.0/INSTALL_AR.md`, `SECURITY.md`, and `docs
 The repository-level overlay adds:
 - An authenticated REST endpoint at `/v1/ask`.
 - A stateless Streamable HTTP MCP endpoint at `/mcp`, exposing project retrieval and public web research tools.
-- A Vercel Python Function deployment using the existing `flybrain-research-mcp` project.
+- A Vercel Python Function deployment using the existing `flybrain-research-mcp` project. Its public read-only MCP tools are rate-limited; interactive browser tasks remain bearer-protected.
 - A Render Blueprint in `render.yaml` as an optional alternative backend.
 - Plugin Creator setup guidance in `CHATGPT_PLUGIN_SETUP.md`; the legacy GPT Action schema remains in `CHATGPT_ACTION_OPENAPI.yaml`.
 
