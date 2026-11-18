@@ -1,13 +1,37 @@
-"""Browser Use adapter for FlyBrain MCP. Local-first, optional dependency."""
+"""Browser automation and safe HTTP research adapters for FlyBrain.
+
+The HTTP research path is serverless-friendly and does not require a hosted browser
+or external LLM. Interactive browser control remains an optional Browser Use extra.
+"""
 from __future__ import annotations
+
+import json
 import os
 import re
-from urllib.parse import urlparse
-from ipaddress import ip_address
-from urllib.request import urlopen
+import socket
+import time
+from html.parser import HTMLParser
+from ipaddress import ip_address, ip_address as _ip
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 class BrowserUseNotConfigured(RuntimeError):
     pass
+
+
+def _resolve_public_host(host: str) -> None:
+    try:
+        literal = ip_address(host)
+        addresses = [literal]
+    except ValueError:
+        try:
+            addresses = [_ip(item[4][0]) for item in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)]
+        except OSError as exc:
+            raise ValueError("The target hostname could not be resolved") from exc
+    if not addresses or any(not addr.is_global for addr in addresses):
+        raise ValueError("Private, loopback, link-local, reserved, and non-public network targets are blocked")
+
 
 def _validate_url(url: str) -> str:
     if not isinstance(url, str) or len(url) > 2048:
@@ -18,38 +42,148 @@ def _validate_url(url: str) -> str:
     host = parsed.hostname.lower().rstrip(".")
     if host in {"localhost", "localhost.localdomain"} or host.endswith((".local", ".internal", ".localhost")):
         raise ValueError("Local and internal hostnames are blocked")
-    try:
-        addr = ip_address(host)
-    except ValueError:
-        addr = None
-    if addr is not None and (addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved):
-        raise ValueError("Private, loopback, link-local, and reserved IP addresses are blocked")
+    _resolve_public_host(host)
     return url.strip()
 
-def _make_llm():
-    provider = os.environ.get("BROWSER_USE_PROVIDER", "ollama").strip().lower()
-    model = os.environ.get("BROWSER_USE_MODEL", "qwen2.5:7b").strip()
-    if provider == "ollama":
-        from browser_use import ChatOpenAI
-        return ChatOpenAI(model=model, base_url=os.environ.get("BROWSER_USE_BASE_URL", "http://127.0.0.1:11434/v1"), api_key=os.environ.get("BROWSER_USE_API_KEY", "ollama"))
-    if provider == "openai":
-        if not os.environ.get("OPENAI_API_KEY"):
-            raise BrowserUseNotConfigured("OPENAI_API_KEY is not configured")
-        from browser_use import ChatOpenAI
-        return ChatOpenAI(model=model)
-    if provider == "google":
-        if not os.environ.get("GOOGLE_API_KEY"):
-            raise BrowserUseNotConfigured("GOOGLE_API_KEY is not configured")
-        from browser_use import ChatGoogle
-        return ChatGoogle(model=model)
-    if provider == "browser-use-cloud":
-        if os.environ.get("BROWSER_USE_ALLOW_CLOUD", "").lower() != "true":
-            raise BrowserUseNotConfigured("Browser Use Cloud is disabled until possible usage charges are explicitly approved")
-        if not os.environ.get("BROWSER_USE_API_KEY"):
-            raise BrowserUseNotConfigured("BROWSER_USE_API_KEY is not configured")
-        from browser_use import ChatBrowserUse
-        return ChatBrowserUse()
-    raise BrowserUseNotConfigured("Unsupported BROWSER_USE_PROVIDER")
+
+class _SafeRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _validate_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _http_get(url: str, timeout: float = 10.0, max_bytes: int = 1_500_000):
+    target = _validate_url(url)
+    request = Request(target, headers={
+        "User-Agent": "Mozilla/5.0 (compatible; FlyBrainResearch/1.0; +https://github.com/ramysaid721-sudo/FlyBrain-Research-Platform)",
+        "Accept": "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.5",
+        "Accept-Language": "en-US,en;q=0.8",
+    })
+    opener = build_opener(_SafeRedirect())
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            final_url = _validate_url(response.geturl())
+            content_type = response.headers.get("Content-Type", "")
+            data = response.read(max_bytes + 1)
+            if len(data) > max_bytes:
+                raise ValueError("The page exceeded the extraction size limit")
+            charset_match = re.search(r"charset=([w.-]+)", content_type, re.I)
+            charset = charset_match.group(1) if charset_match else "utf-8"
+            try:
+                body = data.decode(charset, errors="replace")
+            except LookupError:
+                body = data.decode("utf-8", errors="replace")
+            return final_url, content_type, body
+    except HTTPError as exc:
+        raise ValueError(f"Website returned HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise ValueError(f"Website request failed: {type(exc.reason).__name__}") from exc
+
+
+class _PageParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.title = ""
+        self.description = ""
+        self.canonical = ""
+        self.text_parts = []
+        self.links = []
+        self._in_title = False
+        self._skip = 0
+        self._anchor = None
+        self._heading = 0
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        classes = set((attrs.get("class") or "").split())
+        if tag in {"script", "style", "noscript", "svg", "iframe", "nav", "footer"}:
+            self._skip += 1
+        if tag == "title":
+            self._in_title = True
+        if tag == "meta" and (attrs.get("name") or "").lower() == "description":
+            self.description = attrs.get("content", "")[:500]
+        if tag == "link" and "canonical" in (attrs.get("rel") or "").lower():
+            self.canonical = attrs.get("href", "")[:2048]
+        if tag in {"h1", "h2", "h3"}:
+            self._heading = int(tag[1])
+            self.text_parts.append("\n" + "#" * self._heading + " ")
+        if tag == "a" and attrs.get("href"):
+            self._anchor = {"href": attrs.get("href", ""), "text": "", "classes": classes}
+
+    def handle_endtag(self, tag):
+        if tag in {"script", "style", "noscript", "svg", "iframe", "nav", "footer"} and self._skip:
+            self._skip -= 1
+        if tag == "title":
+            self._in_title = False
+        if tag in {"h1", "h2", "h3"}:
+            self.text_parts.append("\n")
+            self._heading = 0
+        if tag == "a" and self._anchor:
+            self.links.append(self._anchor)
+            self._anchor = None
+        if tag in {"p", "div", "li", "section", "article", "br"}:
+            self.text_parts.append("\n")
+
+    def handle_data(self, data):
+        clean = " ".join(data.split())
+        if not clean:
+            return
+        if self._in_title:
+            self.title += clean + " "
+        if self._skip:
+            return
+        self.text_parts.append(clean + " ")
+        if self._anchor:
+            self._anchor["text"] += clean + " "
+
+    def page_text(self):
+        return re.sub(r"\n{3,}", "\n\n", "".join(self.text_parts)).strip()
+
+
+class _SearchParser(HTMLParser):
+    def __init__(self, limit: int):
+        super().__init__(convert_charrefs=True)
+        self.limit = limit
+        self.results = []
+        self._current = None
+        self._snippet = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        classes = set((attrs.get("class") or "").split())
+        if tag == "a" and "result__a" in classes and len(self.results) < self.limit:
+            self._current = {"title": "", "url": attrs.get("href", ""), "snippet": ""}
+        elif self._current is not None and tag in {"a", "div", "td"} and ("result__snippet" in classes or "result-snippet" in classes):
+            self._snippet = True
+
+    def handle_endtag(self, tag):
+        if self._current is not None and tag == "a" and self._current.get("title"):
+            self._current["title"] = self._current["title"].strip()
+        if self._current is not None and tag in {"div", "td"} and self._snippet:
+            self._snippet = False
+        if self._current is not None and tag == "a":
+            if self._current.get("title"):
+                self.results.append(self._current)
+            self._current = None
+
+    def handle_data(self, data):
+        if self._current is None:
+            return
+        if self._snippet:
+            self._current["snippet"] += data
+        else:
+            self._current["title"] += data
+
+
+def _normalise_search_url(raw: str) -> str:
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+        target = parse_qs(parsed.query).get("uddg", [""])[0]
+        return unquote(target)
+    return raw
+
 
 def browser_use_status() -> dict:
     provider = os.environ.get("BROWSER_USE_PROVIDER", "ollama").strip().lower()
@@ -60,6 +194,7 @@ def browser_use_status() -> dict:
         installed, version = False, None
     ready, reason = installed, None
     if provider == "ollama":
+        from urllib.request import urlopen
         endpoint = os.environ.get("BROWSER_USE_BASE_URL", "http://127.0.0.1:11434/v1").rstrip("/")
         if ready:
             try:
@@ -82,10 +217,15 @@ def browser_use_status() -> dict:
         reason = None if ready else "Cloud mode is disabled or its key is missing; cloud usage may incur charges."
     else:
         ready, reason = False, "Unsupported BROWSER_USE_PROVIDER."
-    return {"installed": installed, "version": version, "provider": provider, "ready": bool(ready),
-            "browser_mode": "local Chromium" if provider != "browser-use-cloud" else "Browser Use Cloud",
-            "reason": reason, "persistent_profiles": False,
-            "note": "Browser automation is not active until a live task succeeds."}
+    return {
+        "installed": installed, "version": version, "provider": provider,
+        "ready": bool(ready), "interactive_browser_ready": bool(ready),
+        "web_search_ready": True, "web_fetch_ready": True,
+        "browser_mode": "local Chromium" if provider != "browser-use-cloud" else "Browser Use Cloud",
+        "reason": reason, "persistent_profiles": False,
+        "note": "HTTP search and extraction work independently. Interactive browser control is not active until a live Browser Use task succeeds.",
+    }
+
 
 def run_browser_task(url: str, goal: str, max_steps: int = 12, allow_side_effects: bool = False) -> dict:
     target = _validate_url(url)
@@ -97,10 +237,10 @@ def run_browser_task(url: str, goal: str, max_steps: int = 12, allow_side_effect
         raise ValueError("allow_side_effects must be boolean")
     mutation_terms = re.compile(r"\b(send|submit|purchase|buy|pay|delete|remove|publish|post|upload|change password|change settings|invite|book|reserve|transfer|deploy)\b", re.IGNORECASE)
     if mutation_terms.search(goal) and not allow_side_effects:
-        return {"status": "approval_required", "message": "This goal may modify an account or submit information. Explicit approval is required; set allow_side_effects=true only after approval.", "url": target, "steps": 0}
+        return {"status": "approval_required", "message": "This goal may modify an account or submit information. Explicit approval is required.", "url": target, "steps": 0}
     status = browser_use_status()
     if not status["installed"]:
-        raise BrowserUseNotConfigured("Install the optional dependency from requirements-browser-use.txt")
+        raise BrowserUseNotConfigured("Interactive browser control is unavailable: install Browser Use and Chromium on a compatible persistent browser host")
     if not status["ready"]:
         raise BrowserUseNotConfigured(status.get("reason") or "Browser Use is not configured")
     try:
@@ -123,53 +263,124 @@ def run_browser_task(url: str, goal: str, max_steps: int = 12, allow_side_effect
         return {"status": "error", "url": target, "goal": goal.strip(),
                 "error": f"{type(exc).__name__}: {str(exc)[:1200]}", "provider": status["provider"]}
 
+
+def _make_llm():
+    provider = os.environ.get("BROWSER_USE_PROVIDER", "ollama").strip().lower()
+    model = os.environ.get("BROWSER_USE_MODEL", "qwen2.5:7b").strip()
+    if provider == "ollama":
+        from browser_use import ChatOpenAI
+        return ChatOpenAI(model=model, base_url=os.environ.get("BROWSER_USE_BASE_URL", "http://127.0.0.1:11434/v1"), api_key=os.environ.get("BROWSER_USE_API_KEY", "ollama"))
+    if provider == "openai":
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise BrowserUseNotConfigured("OPENAI_API_KEY is not configured")
+        from browser_use import ChatOpenAI
+        return ChatOpenAI(model=model)
+    if provider == "google":
+        if not os.environ.get("GOOGLE_API_KEY"):
+            raise BrowserUseNotConfigured("GOOGLE_API_KEY is not configured")
+        from browser_use import ChatGoogle
+        return ChatGoogle(model=model)
+    if provider == "browser-use-cloud":
+        if os.environ.get("BROWSER_USE_ALLOW_CLOUD", "").lower() != "true" or not os.environ.get("BROWSER_USE_API_KEY"):
+            raise BrowserUseNotConfigured("Browser Use Cloud is disabled or not configured")
+        from browser_use import ChatBrowserUse
+        return ChatBrowserUse()
+    raise BrowserUseNotConfigured("Unsupported BROWSER_USE_PROVIDER")
+
+
 def run_browser_search(query: str, max_results: int = 8) -> dict:
-    """Search the public web through a rendered search results page."""
-    from urllib.parse import quote_plus
     if not isinstance(query, str) or not query.strip() or len(query) > 1500:
         raise ValueError("query must be a non-empty string of at most 1500 characters")
     if isinstance(max_results, bool) or not isinstance(max_results, int) or not 1 <= max_results <= 20:
         raise ValueError("max_results must be between 1 and 20")
-    target = "https://html.duckduckgo.com/html/?q=" + quote_plus(query.strip())
-    goal = (
-        f"Search the web for: {query.strip()}. Inspect the search results page and return up to {max_results} "
-        "relevant results as JSON objects with title, url, snippet, and source_domain. "
-        "Do not open ads. Prefer primary or authoritative sources and preserve the exact URLs."
-    )
-    result = run_browser_task(target, goal, max_steps=12)
-    result["query"] = query.strip()
-    return result
+    search_url = "https://html.duckduckgo.com/html/?q=" + quote_plus(query.strip())
+    final_url, content_type, html = _http_get(search_url, timeout=12, max_bytes=1_000_000)
+    parser = _SearchParser(max_results)
+    parser.feed(html)
+    results = []
+    for item in parser.results[:max_results]:
+        url = _normalise_search_url(item.get("url", ""))
+        try:
+            url = _validate_url(url)
+        except ValueError:
+            continue
+        results.append({
+            "title": " ".join(item.get("title", "").split()),
+            "url": url,
+            "snippet": " ".join(item.get("snippet", "").split()),
+            "source_domain": urlparse(url).hostname,
+        })
+    return {"status": "completed", "query": query.strip(), "results": results,
+            "result_count": len(results), "search_engine": "DuckDuckGo HTML",
+            "search_page": final_url, "content_type": content_type,
+            "note": "Results are public-web search results; verify primary sources before relying on claims."}
 
 
 def run_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
-    """Fetch and extract rendered page content from a public HTTPS page."""
     if output_format not in {"markdown", "text", "json"}:
         raise ValueError("output_format must be markdown, text, or json")
     if not isinstance(include_links, bool):
         raise ValueError("include_links must be boolean")
-    goal = (
-        f"Read the page at the target URL and extract its main content in {output_format} format. "
-        "Preserve headings, dates, tables, and factual details. "
-        + ("Include relevant source links with their exact URLs." if include_links else "Do not include a link list.")
-        + " Do not infer missing facts; report if the page is blocked or unavailable."
-    )
-    return run_browser_task(url, goal, max_steps=10)
+    final_url, content_type, body = _http_get(url, timeout=12, max_bytes=1_500_000)
+    parser = _PageParser()
+    parser.feed(body)
+    content = parser.page_text()
+    links = []
+    if include_links:
+        for item in parser.links[:100]:
+            raw = item.get("href", "").strip()
+            if raw.startswith("https://"):
+                try:
+                    safe = _validate_url(raw)
+                except ValueError:
+                    continue
+                links.append({"text": " ".join(item.get("text", "").split())[:300], "url": safe})
+    result = {
+        "status": "completed", "url": final_url,
+        "title": parser.title.strip()[:500],
+        "description": parser.description,
+        "content_type": content_type,
+        "content": content[:30000],
+        "links": links,
+        "extraction_mode": "HTTP HTML extraction (no JavaScript execution)",
+    }
+    if output_format == "text":
+        result["content"] = content[:30000]
+    elif output_format == "markdown":
+        result["content"] = content[:30000]
+    elif output_format == "json":
+        result["content"] = content[:30000]
+    return result
 
 
 def run_browser_research(question: str, max_sources: int = 6) -> dict:
-    """Perform a multi-source browser research task with explicit source URLs."""
     if not isinstance(question, str) or not question.strip() or len(question) > 4000:
         raise ValueError("question must be a non-empty string of at most 4000 characters")
     if isinstance(max_sources, bool) or not isinstance(max_sources, int) or not 2 <= max_sources <= 12:
         raise ValueError("max_sources must be between 2 and 12")
-    from urllib.parse import quote_plus
-    target = "https://html.duckduckgo.com/html/?q=" + quote_plus(question.strip())
-    goal = (
-        f"Research this question: {question.strip()}. Search for at least {max_sources} independent, relevant "
-        "sources where available. Open the strongest sources, prioritize primary research and official documents, "
-        "cross-check key claims, and return a concise report with claim, evidence, publication date when available, "
-        "source title, and exact source URL. Separate established facts from uncertainty. Never invent citations."
-    )
-    result = run_browser_task(target, goal, max_steps=24)
-    result["question"] = question.strip()
-    return result
+    search = run_browser_search(question.strip(), max_results=max_sources)
+    sources = []
+    for item in search["results"][:max_sources]:
+        try:
+            page = run_browser_fetch(item["url"], output_format="text", include_links=False)
+            sources.append({
+                "title": page.get("title") or item["title"],
+                "url": page["url"],
+                "domain": item["source_domain"],
+                "search_snippet": item.get("snippet", ""),
+                "page_excerpt": page.get("content", "")[:2200],
+                "fetch_status": "completed",
+            })
+        except Exception as exc:
+            sources.append({
+                "title": item["title"], "url": item["url"],
+                "domain": item["source_domain"], "search_snippet": item.get("snippet", ""),
+                "fetch_status": "failed", "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+            })
+    return {
+        "status": "completed", "question": question.strip(),
+        "sources": sources, "source_count": len(sources),
+        "search_engine": search.get("search_engine"),
+        "method": "Search results plus direct public-page extraction; no JavaScript browser or model-generated conclusions.",
+        "instruction": "Synthesize claims from these source excerpts, cite exact URLs, and distinguish retrieved evidence from inference.",
+    }
