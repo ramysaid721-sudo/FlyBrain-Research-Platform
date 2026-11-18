@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import json
 import os
 import sys
 import types
@@ -122,7 +123,22 @@ _bridge = mcp_server.FlyBrainMCP(
 
 
 def app(environ, start_response):
-    original_path = parse_qs(environ.get("QUERY_STRING", "")).get("__path", [None])[0]
+    params = parse_qs(environ.get("QUERY_STRING", ""))
+    original_path = params.get("__path", [None])[0]
     if original_path:
         environ["PATH_INFO"] = original_path
+    if original_path == "/health" and params.get("check_corpus") == ["1"]:
+        ready = _ensure_release()
+        payload = {
+            "status": "ok",
+            "service": "flybrain-chat-bridge",
+            "source_corpus": "full_release_archive" if ready else "repository_markdown_fallback",
+        }
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        start_response("200 OK", [
+            ("Content-Type", "application/json; charset=utf-8"),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-store"),
+        ])
+        return [body]
     return _bridge(environ, start_response)
