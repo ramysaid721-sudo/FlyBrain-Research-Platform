@@ -15,17 +15,19 @@ This deployment is a serverless alternative to the Render Blueprint. It reuses t
 - Plan: Hobby
 - Authentication secret: `FLYBRAIN_CHAT_API_TOKEN` (stored as an encrypted Vercel environment variable; never commit its value).
 
-## Operating mode and scope
+## Operating mode and evidence corpus
 
-This deployment intentionally uses provider-free mode. It returns relevant source-labelled excerpts from the repository's Markdown documentation; ChatGPT synthesizes the answer. It does not call paid ModelHub providers.
+This deployment intentionally uses provider-free mode. It retrieves source-labelled excerpts from the complete FlyBrain v0.14.0 release documentation tree. On a cold start, the function downloads the pinned public release ZIP from GitHub, verifies its Git blob SHA-1, and extracts it into ephemeral `/tmp` storage. If that download is unavailable, it falls back to the repository's Markdown documentation.
 
-The deployment bundle includes the project README and ChatGPT integration documentation. It does not yet bundle the full release ZIP's internal FlyBrain-NOS and URCAL documentation tree, so the evidence corpus is narrower than the full Render release build.
+ChatGPT synthesizes the returned evidence. No paid ModelHub provider is configured and no external model API key is required.
 
-The serverless function is request-driven, not an always-running process. Its local `/tmp` storage is ephemeral. Do not use it for durable ledgers or background workers without adding managed persistent storage and a queue.
+## Operational limits
+
+The serverless function is request-driven, not an always-running process. Its local `/tmp` storage is ephemeral and the release archive may be downloaded again after an instance is replaced. Do not use it for durable ledgers or background workers without adding managed persistent storage and a queue.
 
 ## Verification
 
-The production deployment was built successfully and `GET /health` returned HTTP 200 with service status `ok`. A GET to `/mcp` correctly returns HTTP 405 because MCP requests must use POST. Complete authenticated MCP client testing is still required before treating the endpoint as fully integrated with a ChatGPT app.
+The production deployment was built successfully and `GET /health` returned HTTP 200 with service status `ok`. A GET to `/mcp` correctly returns HTTP 405 because MCP requests must use POST. Complete authenticated MCP POST/client testing remains required before treating the endpoint as fully integrated with a ChatGPT app.
 
 ## Redeployment
 
