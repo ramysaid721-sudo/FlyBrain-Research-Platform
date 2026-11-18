@@ -1,66 +1,66 @@
 # FlyBrain ChatGPT plugin and MCP connection
 
-## What is ready
-The repository contains a bearer-authenticated Streamable HTTP MCP endpoint at
-\`/mcp\` with one read-only tool, \`ask_flybrain\`. It returns source-labelled
-FlyBrain-NOS and URCAL excerpts; if ModelHub providers are configured, it can
-also return their candidate answers. Without providers, ChatGPT itself can
-synthesize the retrieved context. The synthetic LIF runtime is not a validated
-biological Drosophila brain or a standalone language model.
+## MCP tools
 
-## ChatGPT app route for a personal Free account
-OpenAI's current Plugin Creator workflow is the supported starting point for
-creating a reusable plugin. Install/connect Plugin Creator, then start a chat
-with \`@plugin-creator\`. Ask it to create a plugin named **FlyBrain** with a
-tool named \`ask_flybrain\` that sends the complete question to the FlyBrain MCP
-server and returns the structured result. Use the remote endpoint
-\`https://YOUR-RENDER-SERVICE.onrender.com/mcp\` and Bearer authentication
-with the generated \`FLYBRAIN_CHAT_API_TOKEN\`. If Plugin Creator offers
-ChatGPT Sites hosting for the app, use that supported hosted-app path for a
-personal plan. Review the generated tool schema and test it before use.
+The authenticated Streamable HTTP MCP bridge exposes six tools:
 
-Important: direct custom remote MCP server connections are currently limited
-to Business and Enterprise/Edu; Pro supports read/fetch-only custom MCP apps.
-ChatGPT Sites-hosted plugin apps are documented as available on any plan.
-Plugin Creator must determine whether it can securely wrap this external
-endpoint in a Sites-hosted plugin for this account. Do not paste the bearer
-token into plugin instructions, a public document, or repository source; put it
-only into the app's designated secret/authentication field.
+- ask_flybrain(question): retrieve source-labelled FlyBrain-NOS and URCAL project evidence.
+- browser_search(query, max_results): search public web results.
+- browser_fetch(url, output_format, include_links): extract content from a rendered public page.
+- browser_research(question, max_sources): inspect multiple sources and return a source-linked research report.
+- browser_use_status(): inspect the optional Browser Use dependency and model configuration.
+- browser_run_task(url, goal, max_steps, allow_side_effects): run a bounded browser task against an authorized public HTTPS website.
 
-## Suggested Plugin Creator request
-Create a ChatGPT plugin called FlyBrain. It must expose one read-only research
-tool, ask_flybrain(question), connected to the authenticated FlyBrain MCP
-endpoint at https://YOUR-RENDER-SERVICE.onrender.com/mcp. Use Bearer
-authentication stored as a secret, not in source code or instructions. When
-the user says the exact keyword "ذبابة" or asks to consult FlyBrain, call
-ask_flybrain with the user's complete question, then synthesize the returned
-research context using the current ChatGPT model. Cite the returned source
-paths in prose. Clearly distinguish documented evidence, model-generated
-interpretation, and open hypotheses. Never claim the simulated LIF runtime is
-a biologically validated fly brain. If the tool is unavailable, say so and do
-not pretend it was called. Do not expose credentials or add write/delete tools.
+The browser adapter is local-first: local Chromium plus an OpenAI-compatible local model endpoint (Ollama by default). Search, fetch, and research tools use this same runtime. It is optional and is not activated merely by merging the code. A live run requires the pinned Browser Use dependency, Chromium, and a reachable model endpoint. Account changes, form submissions, purchases, publishing, deletion, uploads, deployments, and similar side effects require explicit approval.
 
-## Deployment
-Import this repository into Render as a Blueprint and use the root
-\`render.yaml\`. It creates one Free web service in Frankfurt and generates
-\`FLYBRAIN_CHAT_API_TOKEN\`. Verify \`GET /health\` and then test the MCP
-endpoint. The free instance sleeps after 15 minutes idle, wakes on demand,
-and has ephemeral local storage. It can keep working while the phone is off,
-but it is not 24/7 always-on and its first request after sleep may take about
-one minute. No paid ModelHub API key is required for context-only operation.
+## ChatGPT app route
 
-## Invocation and scope
-After the plugin is created, invoke it in ChatGPT by selecting it or using its
-\`@FlyBrain\` mention, then ask your question. Plugin tools are not a global
-interceptor for every ordinary chat; the app must be active/selected in the
-conversation. The keyword rule applies inside the plugin workflow.
+OpenAI's Plugin Creator workflow is the supported starting point for creating a reusable plugin. Install/connect Plugin Creator, then start a chat with @plugin-creator. Ask it to create a plugin named FlyBrain and expose the six tools listed above through the authenticated MCP endpoint:
 
-## Credentials and privacy
-The Render Blueprint generates the bearer token. Keep it in Render's secret
-environment settings and the plugin's secret authentication field only.
-Questions are processed by the Render service. In provider-free mode, the
-service retrieves local source excerpts and returns them to ChatGPT; ChatGPT
-then generates the natural-language answer. If you later configure external
-ModelHub providers, question text and context will also be sent to those
-providers and API charges may apply. Do not configure a paid provider without
-an explicit budget decision.
+https://YOUR-RENDER-SERVICE.onrender.com/mcp
+
+Use Bearer authentication with the generated FLYBRAIN_CHAT_API_TOKEN. Store the token only in the app's designated secret/authentication field, never in instructions, a public document, or repository source.
+
+The plugin should route the exact keyword "ذبابة" or an explicit request to consult FlyBrain to ask_flybrain. For web research, it should inspect browser_use_status first and use browser_search, browser_fetch, or browser_research only when the runtime is ready. For interactive tasks, use browser_run_task. If it is not ready, report that accurately; do not pretend the browser was launched.
+
+Important: direct custom remote MCP server connections are currently limited by ChatGPT plan and app support. Plugin Creator must determine the supported hosting and connection route for this account. Review the generated tool schema and test it before use.
+
+## Browser automation setup
+
+Install the optional dependency from the repository root:
+
+~~~bash
+python -m pip install -r requirements-browser-use.txt
+uvx browser-use install
+~~~
+
+For a local Ollama model, configure the FlyBrain service process with:
+
+~~~bash
+BROWSER_USE_PROVIDER=ollama
+BROWSER_USE_BASE_URL=http://127.0.0.1:11434/v1
+BROWSER_USE_MODEL=qwen2.5:7b
+BROWSER_USE_API_KEY=ollama
+~~~
+
+Ollama and the selected model must run in the same host/network namespace as the FlyBrain service. A local Ollama endpoint on a phone or laptop is not automatically reachable from Render. Do not expose Ollama publicly.
+
+Optional external model providers:
+- OpenAI: BROWSER_USE_PROVIDER=openai and OPENAI_API_KEY.
+- Google: BROWSER_USE_PROVIDER=google and GOOGLE_API_KEY.
+- Browser Use hosted model/browser: BROWSER_USE_PROVIDER=browser-use-cloud, BROWSER_USE_API_KEY, and BROWSER_USE_ALLOW_CLOUD=true. This may incur charges and is disabled by default.
+
+## Deployment status and limits
+
+The repository contains a Render Blueprint, but the last account inspection found no existing Render services, databases, or Key Value instances. No service has been created or deployed as part of this browser integration. The Render free service has not been proven suitable for hosting a local browser plus model. Do not create any paid resources without explicit approval.
+
+The Cloudflare Worker is a separate lightweight, read-only research endpoint; it cannot run the Python Chromium agent inside the Worker runtime. The Browser Use MCP tools are part of the Python bridge and become reachable only after that bridge is deployed and configured.
+
+## Safety and privacy
+
+- Use only accounts and websites the user is authorized to access.
+- Never bypass CAPTCHAs, paywalls, authentication, or access controls.
+- Never commit passwords, cookies, TOTP seeds, browser profiles, or API tokens.
+- Require explicit user approval before any state-changing action.
+- Browser automation tasks may expose page content to the configured model provider. Review the model endpoint and privacy policy before enabling it.
+- Without a model provider, Browser Use cannot execute natural-language tasks. The research-only ask_flybrain tool remains independently usable.

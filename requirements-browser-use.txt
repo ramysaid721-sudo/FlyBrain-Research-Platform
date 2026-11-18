@@ -1,0 +1,2 @@
+# Optional browser automation extra; exact pin is intentional.
+browser-use==1.0.0

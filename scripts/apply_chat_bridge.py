@@ -10,6 +10,8 @@ PATCHES = {
     ROOT / "bridge" / "test_chat_api.py": Path("components/FlyBrain-NOS/tests/test_chat_api.py"),
     ROOT / "bridge" / "mcp_server.py": Path("components/FlyBrain-NOS/flybrain_os/mcp_server.py"),
     ROOT / "bridge" / "test_mcp_server.py": Path("components/FlyBrain-NOS/tests/test_mcp_server.py"),
+    ROOT / "bridge" / "browser_use_adapter.py": Path("components/FlyBrain-NOS/flybrain_os/browser_use_adapter.py"),
+    ROOT / "bridge" / "test_browser_use_adapter.py": Path("components/FlyBrain-NOS/tests/test_browser_use_adapter.py"),
 }
 
 def replace_once(path: Path, old: str, new: str) -> None:
