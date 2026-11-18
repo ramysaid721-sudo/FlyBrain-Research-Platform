@@ -49,8 +49,8 @@ class FlyBrainMCP:
                 requested = (req.get("params") or {}).get("protocolVersion", "2025-03-26")
                 version = requested if requested in {"2024-11-05", "2025-03-26", "2025-06-18"} else "2025-03-26"
                 result = {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}},
-                          "serverInfo": {"name": "flybrain-research-bridge", "version": "0.15.0"},
-                          "instructions": "Use ask_flybrain for source-labelled project research. Use browser_use_status to inspect the optional browser agent and browser_run_task for bounded authorized HTTPS browsing. Side effects require explicit approval. Distinguish evidence from hypotheses."}
+                          "serverInfo": {"name": "flybrain-research-bridge", "version": "0.16.0"},
+                          "instructions": "Use ask_flybrain for source-labelled project evidence. Use browser_search, browser_fetch, and browser_research for public HTTP search and page extraction. These do not require a JavaScript browser or external model. Use browser_use_status to inspect the optional interactive Browser Use agent; browser_run_task requires a separately configured browser host and model. Side effects require explicit approval. Distinguish retrieved evidence from inference."}
             elif method == "ping":
                 result = {}
             elif method == "tools/list":
@@ -60,23 +60,23 @@ class FlyBrainMCP:
                      "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "minLength": 1, "maxLength": 12000}}, "required": ["question"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "browser_search", "title": "Search the public web",
-                     "description": "Search public web results through a rendered search page and return titles, snippets, and exact URLs. Requires a configured Browser Use runtime.",
+                     "description": "Search public web results through DuckDuckGo HTML and return titles, snippets, and exact URLs. Uses safe HTTPS fetching; no Browser Use dependency or external LLM is required.",
                      "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 1500}, "max_results": {"type": "integer", "minimum": 1, "maximum": 20, "default": 8}}, "required": ["query"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "browser_fetch", "title": "Fetch rendered webpage content",
-                     "description": "Read a public HTTPS page in a rendered browser and extract Markdown, text, or JSON-like content with relevant links.",
+                     "description": "Fetch a public HTTPS page and extract readable HTML/text content, title, description, and source links. This HTTP mode does not execute JavaScript.",
                      "inputSchema": {"type": "object", "properties": {"url": {"type": "string", "format": "uri", "maxLength": 2048}, "output_format": {"type": "string", "enum": ["markdown", "text", "json"], "default": "markdown"}, "include_links": {"type": "boolean", "default": True}}, "required": ["url"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "browser_research", "title": "Multi-source web research",
                      "description": "Search and inspect multiple public sources, cross-check claims, and return a report with exact source URLs. Requires a configured Browser Use runtime.",
-                     "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "minLength": 1, "maxLength": 4000}, "max_sources": {"type": "integer", "minimum": 2, "maximum": 12, "default": 6}}, "required": ["question"], "additionalProperties": False},
+                     "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "minLength": 1, "maxLength": 4000}, "max_sources": {"type": "integer", "minimum": 2, "maximum": 6, "default": 6}}, "required": ["question"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "browser_use_status", "title": "Browser automation readiness",
-                     "description": "Check whether the optional Browser Use agent, local Chromium, and selected model configuration are installed/configured. This does not launch a browser.",
+                     "description": "Check interactive Browser Use readiness separately from the HTTP search and fetch capabilities. This does not launch a browser.",
                      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
                     {"name": "browser_run_task", "title": "Run a browser task",
-                     "description": "Run a bounded Browser Use task on an authorized public HTTPS website. Defaults to local Chromium plus a local Ollama-compatible model. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
+                     "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
                          "url": {"type": "string", "format": "uri", "maxLength": 2048},
                          "goal": {"type": "string", "minLength": 1, "maxLength": 8000},
