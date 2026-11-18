@@ -1,12 +1,16 @@
 """Authenticated MCP facade for FlyBrain research and browser automation."""
 from __future__ import annotations
-import hmac, io, json, os
+import hmac, io, json, os, time
+from collections import defaultdict, deque
+from threading import Lock
 from wsgiref.simple_server import make_server
 from .chat_api import FlyBrainChatApp
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
         self.app, self.token = app, token
+        self._public_calls = defaultdict(deque)
+        self._public_lock = Lock()
 
     @staticmethod
     def send(start, status, payload=None):
@@ -54,8 +58,6 @@ class FlyBrainMCP:
             return [b""]
         auth = env.get("HTTP_AUTHORIZATION", "")
         supplied = auth[7:] if auth.startswith("Bearer ") else ""
-        if not hmac.compare_digest(supplied, self.token):
-            return self.send(start, "401 Unauthorized", {"error": "unauthorized"})
         try:
             n = int(env.get("CONTENT_LENGTH") or "0")
             if n < 1 or n > 32768:
@@ -66,6 +68,24 @@ class FlyBrainMCP:
             mid, method = req.get("id"), req["method"]
             if mid is None and method.startswith("notifications/"):
                 return self.send(start, "202 Accepted")
+            params = req.get("params") or {}
+            tool_name = params.get("name") if method == "tools/call" else None
+            public_methods = {"initialize", "ping", "tools/list"}
+            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status"}
+            public_request = method in public_methods or (method == "tools/call" and tool_name in public_tools)
+            if not public_request and not hmac.compare_digest(supplied, self.token):
+                return self.send(start, "401 Unauthorized", {"error": "unauthorized"})
+            if public_request:
+                forwarded = env.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+                client = env.get("HTTP_X_REAL_IP") or env.get("REMOTE_ADDR") or forwarded or "unknown"
+                now = time.monotonic()
+                with self._public_lock:
+                    calls = self._public_calls[client]
+                    while calls and now - calls[0] > 60:
+                        calls.popleft()
+                    if len(calls) >= 60:
+                        return self.send(start, "429 Too Many Requests", {"error": "public_rate_limit_exceeded", "retry_after_seconds": 60})
+                    calls.append(now)
             if method == "initialize":
                 requested = (req.get("params") or {}).get("protocolVersion", "2025-03-26")
                 version = requested if requested in {"2024-11-05", "2025-03-26", "2025-06-18"} else "2025-03-26"
@@ -116,7 +136,7 @@ class FlyBrainMCP:
                         return self.send(start, "200 OK", {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "Invalid question"}})
                     raw = json.dumps({"question": q.strip()}).encode()
                     inner = dict(env)
-                    inner.update({"REQUEST_METHOD": "POST", "PATH_INFO": "/v1/ask", "CONTENT_LENGTH": str(len(raw)), "wsgi.input": io.BytesIO(raw), "HTTP_AUTHORIZATION": auth})
+                    inner.update({"REQUEST_METHOD": "POST", "PATH_INFO": "/v1/ask", "CONTENT_LENGTH": str(len(raw)), "wsgi.input": io.BytesIO(raw), "HTTP_AUTHORIZATION": "Bearer " + self.token})
                     captured = {}
                     def inner_start(status, headers): captured["status"] = status
                     body = b"".join(self.app(inner, inner_start))
