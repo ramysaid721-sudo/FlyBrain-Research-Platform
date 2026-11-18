@@ -17,8 +17,11 @@ The ChatGPT plugin package `flybrain-zubaba` version `0.2.0` points to this endp
 - `browser_fetch(url, output_format, include_links)`: extract readable text, page title, description, and links from a public HTTPS page.
 - `browser_research(question, max_sources)`: search and fetch up to six public sources; returns source excerpts and exact URLs for ChatGPT to synthesize.
 - `browser_use_status()`: report HTTP research readiness and interactive browser readiness separately.
+- `tool_manager_status()`: report installed-package inventory and whether isolated tool installation is safely available.
+- `tool_catalog()`: list narrowly allowlisted low-risk tool candidates and blocked high-impact examples.
+- `assess_tool(name, version, source)`: assess a candidate against the fail-closed tool policy; assessment never installs or executes it.
 
-The public MCP surface includes `initialize`, `ping`, and `tools/list`. Public calls are guarded by a per-instance rate limit of 60 requests per minute. The rate limiter is not a distributed quota system and may reset when a serverless instance restarts.
+The public MCP surface includes `initialize`, `ping`, and `tools/list`. Public calls are guarded by a per-instance rate limit of 60 requests per minute. The read-only tool catalog and policy assessment endpoints do not install packages or execute candidates. The rate limiter is not a distributed quota system and may reset when a serverless instance restarts.
 
 ## Protected interactive automation
 
@@ -72,9 +75,16 @@ Render was inspected previously and had no services, databases, or Key Value sto
 
 ## Plugin behavior
 
-When the user says `ذبابة` in a FlyBrain/URCAL context:
+Call `ask_flybrain` automatically whenever a request depends on FlyBrain-NOS, URCAL, the FlyBrain repository, its architecture, implementation, status, evidence, integrations, or project decisions. The user does not need to type `ذبابة` or name the plugin. Do not call it for unrelated general questions.
+
+For relevant requests:
 1. Call `ask_flybrain` with the actual question.
 2. For current public-web information, call `browser_search`; for a known URL, call `browser_fetch`.
 3. For multi-source research, call `browser_research` and synthesize its returned excerpts in ChatGPT.
 4. Preserve exact source paths and URLs. Distinguish documented project facts, externally retrieved evidence, interpretation, hypotheses, and recommendations.
 5. If a tool returns no evidence or a fetch fails, report that accurately rather than inventing results.
+
+
+## Tool lifecycle and cybersecurity status
+
+The current branch adds a fail-closed Tool Lifecycle Manager. It inventories installed Python packages and assesses proposed tools against a narrow low-risk allowlist. Unknown tools require review; high-impact examples are blocked. This is a policy and inventory layer only: automatic installation and updates remain disabled until a separate isolated worker with verified provenance, pinned hashes, dependency/license checks, test execution, signed artifacts, durable job state, and rollback is implemented and validated. Defensive security guidance may be provided, but active vulnerability scanning, exploit validation, and other intrusive tests are not enabled by this manager and require an explicitly authorized scope and a separate tested execution environment.
