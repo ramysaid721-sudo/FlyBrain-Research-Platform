@@ -1,0 +1,1 @@
+# Optional browser automation extra. Exact version pin is intentional.\nbrowser-use==1.0.0\n
