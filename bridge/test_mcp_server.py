@@ -12,10 +12,11 @@ def call(app, request, token="z"*40):
     body = b"".join(app(env, start))
     return captured, json.loads(body) if body else None
 
-def test_mcp_auth_required(tmp_path):
+def test_interactive_browser_task_requires_bearer_token(tmp_path):
     token="z"*40
     app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
-    response,body=call(app,{"jsonrpc":"2.0","id":1,"method":"initialize"},"bad")
+    request={"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"browser_run_task","arguments":{"url":"https://example.com","goal":"Read the page title"}}}
+    response,body=call(app,request,"bad")
     assert response["status"]=="401 Unauthorized"
 
 def test_initialize_and_tool_discovery(tmp_path):
@@ -33,7 +34,7 @@ def test_tool_call_uses_existing_bridge(tmp_path,monkeypatch):
     monkeypatch.setattr("flybrain_os.chat_api.ModelConsultation.consult",lambda *a,**k:{"status":"no_providers_configured","results":[]})
     app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
     request={"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ask_flybrain","arguments":{"question":"What is FlyBrain?"}}}
-    response,body=call(app,request)
+    response,body=call(app,request,"")
     assert response["status"]=="200 OK"
     assert body["result"]["structuredContent"]["status"]=="context_only"
     assert body["result"]["isError"] is False
@@ -43,7 +44,7 @@ def test_browser_status_tool_is_exposed(tmp_path,monkeypatch):
     monkeypatch.setattr("flybrain_os.browser_use_adapter.browser_use_status",lambda:{"installed":False,"ready":False})
     app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
     request={"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"browser_use_status","arguments":{}}}
-    response,body=call(app,request)
+    response,body=call(app,request,"")
     assert response["status"]=="200 OK"
     assert body["result"]["structuredContent"]["ready"] is False
 
@@ -64,3 +65,24 @@ def test_health_reports_http_research_and_interactive_browser_separately(tmp_pat
     assert payload["version"]=="0.16.0"
     assert payload["capabilities"]["public_web_search"] is True
     assert payload["capabilities"]["interactive_browser"] is False
+
+
+def test_public_browser_search_tool_uses_http_adapter_without_token(tmp_path,monkeypatch):
+    token="z"*40
+    monkeypatch.setattr("flybrain_os.browser_use_adapter.run_browser_search",lambda q,n:{"status":"completed","query":q,"results":[]})
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    request={"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"browser_search","arguments":{"query":"test"}}}
+    response,body=call(app,request,"")
+    assert response["status"]=="200 OK"
+    assert body["result"]["structuredContent"]["status"]=="completed"
+
+
+def test_public_mcp_rate_limit(tmp_path):
+    token="z"*40
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    request={"jsonrpc":"2.0","id":1,"method":"ping"}
+    for _ in range(60):
+        response,_=call(app,request,"")
+        assert response["status"]=="200 OK"
+    response,_=call(app,request,"")
+    assert response["status"]=="429 Too Many Requests"
