@@ -24,7 +24,8 @@ def test_initialize_and_tool_discovery(tmp_path):
     response,body=call(app,{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}})
     assert body["result"]["serverInfo"]["name"]=="flybrain-research-bridge"
     response,body=call(app,{"jsonrpc":"2.0","id":2,"method":"tools/list"})
-    assert body["result"]["tools"][0]["name"]=="ask_flybrain"
+    names={tool["name"] for tool in body["result"]["tools"]}
+    assert {"ask_flybrain","browser_use_status","browser_run_task"} <= names
 
 def test_tool_call_uses_existing_bridge(tmp_path,monkeypatch):
     token="z"*40
@@ -36,3 +37,12 @@ def test_tool_call_uses_existing_bridge(tmp_path,monkeypatch):
     assert response["status"]=="200 OK"
     assert body["result"]["structuredContent"]["status"]=="context_only"
     assert body["result"]["isError"] is False
+
+def test_browser_status_tool_is_exposed(tmp_path,monkeypatch):
+    token="z"*40
+    monkeypatch.setattr("flybrain_os.browser_use_adapter.browser_use_status",lambda:{"installed":False,"ready":False})
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    request={"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"browser_use_status","arguments":{}}}
+    response,body=call(app,request)
+    assert response["status"]=="200 OK"
+    assert body["result"]["structuredContent"]["ready"] is False
