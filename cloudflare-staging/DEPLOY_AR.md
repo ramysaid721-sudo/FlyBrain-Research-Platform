@@ -1,10 +1,21 @@
-# تعليمات النشر — النسخة التجريبية
+# تعليمات إعداد ونشر FlyBrain على Cloudflare — بيئة تجريبية
 
-1. اربط Cloudflare بالمستودع والفرع cloudflare-staging-deployment.
-2. حدد مجلد المشروع cloudflare-staging إذا كان إعداد Cloudflare يسمح بتحديد Root Directory.
-3. استخدم ملف wrangler.jsonc الموجود في ذلك المجلد.
-4. أنشئ Rate Limiting binding في Cloudflare باسم FLYBRAIN_PUBLIC_LIMITER. لا يوجد namespace ID افتراضي في هذا الملف؛ استخدم المعرف الذي تخصصه Cloudflare لحسابك.
-5. انشر النسخة التجريبية فقط باسم flybrain-research-platform-staging.
-6. اختبر GET /health ثم اختبارات MCP باستخدام scripts/smoke-test.sh.
+## النطاق
+هذه نسخة تجريبية منفصلة باسم `flybrain-research-platform-staging`، ولا تستبدل Worker الإنتاج.
 
-لا تغيّر اسم Worker الإنتاج ولا تستبدل ملفه. لا تضع Cloudflare API Token في الملفات أو المستودع.
+## إعداد الربط
+1. اربط مستودع GitHub بحساب Cloudflare.
+2. اختر الفرع `cloudflare-staging-deployment`.
+3. اجعل Root Directory هو `cloudflare-staging`.
+4. استخدم ملف الإعداد `wrangler.jsonc` الموجود داخل هذا المجلد.
+5. تأكد من ظهور Rate Limiting binding باسم `FLYBRAIN_PUBLIC_LIMITER`. يتضمن الملف معرّف namespace تجريبياً مستقلاً `26111702`؛ يجب التحقق من قبوله في حساب Cloudflare قبل النشر.
+6. اسم Worker المقترح هو `flybrain-research-platform-staging`.
+
+## الاختبار
+بعد النشر، تحقق من:
+- `GET /health` وأن `rate_limiter_binding` تساوي `true`.
+- `POST /mcp` لطلبات initialize وtools/list.
+- تشغيل `bash scripts/smoke-test.sh https://YOUR-STAGING-WORKER.workers.dev`.
+
+## الأمان
+لا تضع Cloudflare API Token أو كلمات مرور في المستودع. لا تغيّر Worker الإنتاج أو اسمه أو ملف إعداده. لا تنشر قبل مراجعة إعدادات البيئة التجريبية.
