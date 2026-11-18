@@ -32,7 +32,7 @@ class FlyBrainMCP:
     def __call__(self, env, start):
         path = env.get("PATH_INFO", "")
         method = env.get("REQUEST_METHOD", "GET").upper()
-        if path == "/health" and method == "GET":
+        if path in {"/", "/health"} and method == "GET":
             from .browser_use_adapter import browser_use_status
             browser = browser_use_status()
             return self.send(start, "200 OK", {
