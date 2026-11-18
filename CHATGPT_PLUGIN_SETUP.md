@@ -17,9 +17,9 @@ The browser adapter is local-first: local Chromium plus an OpenAI-compatible loc
 
 OpenAI's Plugin Creator workflow is the supported starting point for creating a reusable plugin. Install/connect Plugin Creator, then start a chat with @plugin-creator. Ask it to create a plugin named FlyBrain and expose the six tools listed above through the authenticated MCP endpoint:
 
-https://YOUR-FLYBRAIN-CLOUDFLARE-WORKER-URL/mcp
+https://flybrain-research-mcp.vercel.app/mcp
 
-Use Bearer authentication with the separate FLYBRAIN_BROWSER_ACCESS_TOKEN stored in the Cloudflare Worker secret. The Worker forwards authorized browser calls to the private Python MCP backend using BROWSER_AUTOMATION_TOKEN. Never place either token in instructions, a public document, or repository source.
+Use Bearer authentication with the separate FLYBRAIN_CHAT_API_TOKEN stored as an encrypted Vercel project environment variable. The MCP endpoint is hosted by Vercel Python Functions. Never place either token in instructions, a public document, or repository source.
 
 The plugin should route the exact keyword "ذبابة" or an explicit request to consult FlyBrain to ask_flybrain. For web research, it should inspect browser_use_status first and use browser_search, browser_fetch, or browser_research only when the runtime is ready. For interactive tasks, use browser_run_task. If it is not ready, report that accurately; do not pretend the browser was launched.
 
