@@ -7,7 +7,7 @@ const HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
   "x-content-type-options": "nosniff",
-  "access-control-allow-origin": "https://chatgpt.com",
+  "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, GET, OPTIONS",
   "access-control-allow-headers": "authorization, content-type, accept"
 };
@@ -264,11 +264,13 @@ export default {
     let mismatch = 0;
     for (let i = 0; i < a.length; i++) mismatch |= a[i] ^ b[i];
     if (mismatch !== 0) return json({ error: "unauthorized" }, 401);
-    const length = Number(request.headers.get("content-length") || 0);
-    if (length > MAX_BODY) return json({ error: "request_too_large" }, 413);
-    if (!(request.headers.get("content-type") || "").includes("application/json")) return json({ error: "content_type_must_be_application_json" }, 415);
+    if (!(request.headers.get("content-type") || "").toLowerCase().includes("application/json")) return json({ error: "content_type_must_be_application_json" }, 415);
     let rpc;
-    try { rpc = await request.json(); } catch { return json({ error: "invalid_json" }, 400); }
+    try {
+      const rawBody = await request.arrayBuffer();
+      if (rawBody.byteLength > MAX_BODY) return json({ error: "request_too_large" }, 413);
+      rpc = JSON.parse(new TextDecoder().decode(rawBody));
+    } catch { return json({ error: "invalid_json" }, 400); }
     if (!rpc || rpc.jsonrpc !== "2.0" || typeof rpc.method !== "string") return json({ error: "invalid_json_rpc_request" }, 400);
     if (rpc.method === "initialize") return json({ jsonrpc: "2.0", id: rpc.id, result: {
       protocolVersion: "2025-03-26",
