@@ -25,7 +25,7 @@ def test_initialize_and_tool_discovery(tmp_path):
     assert body["result"]["serverInfo"]["name"]=="flybrain-research-bridge"
     response,body=call(app,{"jsonrpc":"2.0","id":2,"method":"tools/list"})
     names={tool["name"] for tool in body["result"]["tools"]}
-    assert {"ask_flybrain","browser_use_status","browser_run_task"} <= names
+    assert {"ask_flybrain","browser_use_status","browser_run_task","browser_search","browser_fetch","browser_research"} <= names
 
 def test_tool_call_uses_existing_bridge(tmp_path,monkeypatch):
     token="z"*40
