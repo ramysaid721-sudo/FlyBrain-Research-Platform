@@ -46,3 +46,21 @@ def test_browser_status_tool_is_exposed(tmp_path,monkeypatch):
     response,body=call(app,request)
     assert response["status"]=="200 OK"
     assert body["result"]["structuredContent"]["ready"] is False
+
+
+def test_health_reports_http_research_and_interactive_browser_separately(tmp_path,monkeypatch):
+    token="z"*40
+    monkeypatch.setattr("flybrain_os.browser_use_adapter.browser_use_status",lambda:{
+        "installed":False,"ready":False,"interactive_browser_ready":False,
+        "web_search_ready":True,"web_fetch_ready":True,"provider":"ollama"
+    })
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    env={"REQUEST_METHOD":"GET","PATH_INFO":"/health","CONTENT_LENGTH":"0"}
+    captured={}
+    def start(status,headers): captured["status"]=status
+    body=b"".join(app(env,start))
+    payload=json.loads(body)
+    assert captured["status"]=="200 OK"
+    assert payload["version"]=="0.16.0"
+    assert payload["capabilities"]["public_web_search"] is True
+    assert payload["capabilities"]["interactive_browser"] is False
