@@ -65,7 +65,7 @@ def _http_get(url: str, timeout: float = 10.0, max_bytes: int = 1_500_000):
             data = response.read(max_bytes + 1)
             if len(data) > max_bytes:
                 raise ValueError("The page exceeded the extraction size limit")
-            charset_match = re.search(r"charset=([w.-]+)", content_type, re.I)
+            charset_match = re.search(r"charset=([\w.-]+)", content_type, re.I)
             charset = charset_match.group(1) if charset_match else "utf-8"
             try:
                 body = data.decode(charset, errors="replace")
@@ -362,7 +362,7 @@ def run_browser_fetch(url: str, output_format: str = "markdown", include_links: 
 def run_browser_research(question: str, max_sources: int = 6) -> dict:
     if not isinstance(question, str) or not question.strip() or len(question) > 4000:
         raise ValueError("question must be a non-empty string of at most 4000 characters")
-    if isinstance(max_sources, bool) or not isinstance(max_sources, int) or not 2 <= max_sources <= 12:
+    if isinstance(max_sources, bool) or not isinstance(max_sources, int) or not 2 <= max_sources <= 6:
         raise ValueError("max_sources must be between 2 and 12")
     search = run_browser_search(question.strip(), max_results=max_sources)
     sources = []
