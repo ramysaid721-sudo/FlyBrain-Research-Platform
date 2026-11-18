@@ -1,7 +1,7 @@
 """Tests for FlyBrain's fail-closed tool lifecycle policy."""
 import unittest
 
-from flybrain_os.tool_manager import ToolLifecycleManager, ToolPolicyError
+from bridge.tool_manager import ToolLifecycleManager, ToolPolicyError
 
 
 class ToolLifecycleManagerTests(unittest.TestCase):
