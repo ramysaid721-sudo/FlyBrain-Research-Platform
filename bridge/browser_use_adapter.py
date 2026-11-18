@@ -4,6 +4,7 @@ import os
 import re
 from urllib.parse import urlparse
 from ipaddress import ip_address
+from urllib.request import urlopen
 
 class BrowserUseNotConfigured(RuntimeError):
     pass
@@ -59,7 +60,17 @@ def browser_use_status() -> dict:
         installed, version = False, None
     ready, reason = installed, None
     if provider == "ollama":
-        reason = "Local Ollama endpoint selected; verify Ollama and the configured model are running on the same host."
+        endpoint = os.environ.get("BROWSER_USE_BASE_URL", "http://127.0.0.1:11434/v1").rstrip("/")
+        if ready:
+            try:
+                with urlopen(endpoint + "/models", timeout=1.5) as response:
+                    ready = 200 <= response.status < 300
+                reason = None if ready else "The configured Ollama-compatible endpoint did not return HTTP success."
+            except Exception as exc:
+                ready = False
+                reason = "Local model endpoint is unreachable: " + type(exc).__name__
+        else:
+            reason = "Browser Use is not installed."
     elif provider == "openai":
         ready = ready and bool(os.environ.get("OPENAI_API_KEY"))
         reason = None if ready else "OPENAI_API_KEY is missing."
