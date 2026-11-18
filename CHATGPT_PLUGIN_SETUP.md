@@ -2,7 +2,7 @@
 
 ## MCP tools
 
-The authenticated Streamable HTTP MCP bridge exposes three tools:
+The authenticated Streamable HTTP MCP bridge exposes six tools:
 
 - ask_flybrain(question): retrieve source-labelled FlyBrain-NOS and URCAL project evidence.
 - browser_use_status(): inspect the optional Browser Use dependency and model configuration.
@@ -12,13 +12,13 @@ The browser adapter is local-first: local Chromium plus an OpenAI-compatible loc
 
 ## ChatGPT app route
 
-OpenAI's Plugin Creator workflow is the supported starting point for creating a reusable plugin. Install/connect Plugin Creator, then start a chat with @plugin-creator. Ask it to create a plugin named FlyBrain and expose the three tools listed above through the authenticated MCP endpoint:
+OpenAI's Plugin Creator workflow is the supported starting point for creating a reusable plugin. Install/connect Plugin Creator, then start a chat with @plugin-creator. Ask it to create a plugin named FlyBrain and expose the six tools listed above through the authenticated MCP endpoint:
 
 https://YOUR-RENDER-SERVICE.onrender.com/mcp
 
 Use Bearer authentication with the generated FLYBRAIN_CHAT_API_TOKEN. Store the token only in the app's designated secret/authentication field, never in instructions, a public document, or repository source.
 
-The plugin should route the exact keyword "ذبابة" or an explicit request to consult FlyBrain to ask_flybrain. For website-interaction requests, it should inspect browser_use_status first and call browser_run_task only when the runtime is ready. If it is not ready, report that accurately; do not pretend the browser was launched.
+The plugin should route the exact keyword "ذبابة" or an explicit request to consult FlyBrain to ask_flybrain. For web research, it should inspect browser_use_status first and use browser_search, browser_fetch, or browser_research only when the runtime is ready. For interactive tasks, use browser_run_task. If it is not ready, report that accurately; do not pretend the browser was launched.
 
 Important: direct custom remote MCP server connections are currently limited by ChatGPT plan and app support. Plugin Creator must determine the supported hosting and connection route for this account. Review the generated tool schema and test it before use.
 
