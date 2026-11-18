@@ -25,8 +25,14 @@ function textResult(value, extra = []) {
 function validHostPattern(pattern) {
   if (typeof pattern !== "string" || !pattern || pattern.length > 253) return false;
   if (pattern.includes("://") || pattern.includes("/") || pattern.includes(":") || pattern.includes("@")) return false;
-  if ((pattern.match(/\*/g) || []).length > 1) return false;
-  return /^[a-zA-Z0-9.*-]+$/.test(pattern);
+  const wildcardCount = [...pattern].filter((char) => char === "*").length;
+  if (pattern === "*" || wildcardCount > 1 || (wildcardCount === 1 && !pattern.startsWith("*."))) return false;
+  const hostname = pattern.startsWith("*.") ? pattern.slice(2) : pattern;
+  const labels = hostname.split(".");
+  if (labels.length < 2 || labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))) return false;
+  if (/^(?:localhost|.*\.(?:local|internal|localhost|test))$/i.test(hostname)) return false;
+  if (labels.every((label) => /^\d+$/.test(label))) return false;
+  return true;
 }
 function hostAllowed(host, patterns) {
   return patterns.some((pattern) => {
