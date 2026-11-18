@@ -44,7 +44,7 @@ jobs:
         run: |
           python -m py_compile bridge/tool_manager.py bridge/mcp_server.py api/index.py
           PYTHONPATH=bridge python -c "from tool_manager import ToolLifecycleManager; m=ToolLifecycleManager(); assert m.assess('pip-audit')['status']=='eligible_for_isolated_testing'; assert m.assess('nmap')['status']=='blocked'; assert m.assess('not-allowlisted')['status']=='review_required'; assert m.status()['automatic_installation'] is False; print('TOOL LIFECYCLE POLICY TESTS PASSED')"
-          python -m pytest -q tests/test_tool_manager.py
+          python -m unittest discover -s tests -p 'test_tool_manager.py' -v
 
       - name: Install packages
         working-directory: .release/FlyBrain_Research_Platform_v0.14.0
