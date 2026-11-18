@@ -4,6 +4,9 @@ interface RateLimit {
 
 interface Env {
   FLYBRAIN_PUBLIC_LIMITER: RateLimit;
+  FLYBRAIN_BROWSER_ACCESS_TOKEN?: string;
+  BROWSER_AUTOMATION_MCP_URL?: string;
+  BROWSER_AUTOMATION_TOKEN?: string;
 }
 
 const REPOSITORY = "ramysaid721-sudo/FlyBrain-Research-Platform";
@@ -59,7 +62,7 @@ async function retrieve(question: string): Promise<Array<{source: string; releva
   }).slice(0, 6);
 }
 
-async function handleMcp(request: Request): Promise<Response> {
+async function handleMcp(request: Request, env: Env): Promise<Response> {
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > 65536) return json({ error: "request_too_large" }, 413);
   if (!request.headers.get("content-type")?.toLowerCase().includes("application/json")) {
@@ -83,17 +86,86 @@ async function handleMcp(request: Request): Promise<Response> {
   }
   if (rpc.method === "ping") return json({ jsonrpc: "2.0", id: rpc.id, result: {} });
   if (rpc.method === "tools/list") {
-    return json({ jsonrpc: "2.0", id: rpc.id, result: { tools: [{
-      name: "ask_flybrain",
-      title: "Ask FlyBrain research system",
-      description: "Public read-only retrieval of source-labelled FlyBrain-NOS and URCAL project evidence. ChatGPT synthesizes the returned excerpts; no paid model provider is required. This tool cannot write, edit, or delete project data.",
-      inputSchema: { type: "object", properties: { question: { type: "string", minLength: 1, maxLength: 12000 } }, required: ["question"], additionalProperties: false },
-      annotations: { readOnlyHint: true, openWorldHint: true }
-    }] }});
+    return json({ jsonrpc: "2.0", id: rpc.id, result: { tools: [
+      {
+        name: "ask_flybrain",
+        title: "Ask FlyBrain research system",
+        description: "Public read-only retrieval of source-labelled FlyBrain-NOS and URCAL project evidence. ChatGPT synthesizes the returned excerpts.",
+        inputSchema: { type: "object", properties: { question: { type: "string", minLength: 1, maxLength: 12000 } }, required: ["question"], additionalProperties: false },
+        annotations: { readOnlyHint: true, openWorldHint: true }
+      },
+      {
+        name: "browser_use_status", title: "Browser automation readiness",
+        description: "Check whether the optional Browser Use service is configured and ready.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true, openWorldHint: false }
+      },
+      {
+        name: "browser_search", title: "Search the public web",
+        description: "Search public web results using the rendered browser agent.",
+        inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 1500 }, max_results: { type: "integer", minimum: 1, maximum: 20, default: 8 } }, required: ["query"], additionalProperties: false },
+        annotations: { readOnlyHint: true, openWorldHint: true }
+      },
+      {
+        name: "browser_fetch", title: "Fetch rendered webpage content",
+        description: "Extract rendered content from a public HTTPS page as Markdown, text, or JSON-like output.",
+        inputSchema: { type: "object", properties: { url: { type: "string", format: "uri", maxLength: 2048 }, output_format: { type: "string", enum: ["markdown", "text", "json"], default: "markdown" }, include_links: { type: "boolean", default: true } }, required: ["url"], additionalProperties: false },
+        annotations: { readOnlyHint: true, openWorldHint: true }
+      },
+      {
+        name: "browser_research", title: "Multi-source web research",
+        description: "Research a question across multiple public sources and return a source-linked report.",
+        inputSchema: { type: "object", properties: { question: { type: "string", minLength: 1, maxLength: 4000 }, max_sources: { type: "integer", minimum: 2, maximum: 12, default: 6 } }, required: ["question"], additionalProperties: false },
+        annotations: { readOnlyHint: true, openWorldHint: true }
+      },
+      {
+        name: "browser_run_task", title: "Run a browser task",
+        description: "Run a bounded browser task on an authorized public HTTPS website. State-changing actions require explicit approval.",
+        inputSchema: { type: "object", properties: { url: { type: "string", format: "uri", maxLength: 2048 }, goal: { type: "string", minLength: 1, maxLength: 8000 }, max_steps: { type: "integer", minimum: 1, maximum: 30, default: 12 }, allow_side_effects: { type: "boolean", default: false } }, required: ["url", "goal"], additionalProperties: false },
+        annotations: { readOnlyHint: false, openWorldHint: true }
+      }
+    ] }});
   }
   if (rpc.method === "tools/call") {
     const name = rpc.params?.name;
-    const question = rpc.params?.arguments?.question;
+    const args = rpc.params?.arguments ?? {};
+    if (typeof name === "string" && name.startsWith("browser_")) {
+      const supplied = (request.headers.get("authorization") ?? "").replace(/^Bearer\\s+/i, "");
+      const expected = env.FLYBRAIN_BROWSER_ACCESS_TOKEN ?? "";
+      let diff = supplied.length ^ expected.length;
+      for (let i = 0; i < Math.max(supplied.length, expected.length); i++) {
+        diff |= (supplied.charCodeAt(i) || 0) ^ (expected.charCodeAt(i) || 0);
+      }
+      if (!expected || diff !== 0) return error(rpc.id, -32001, "Browser automation access is unauthorized");
+      const endpoint = env.BROWSER_AUTOMATION_MCP_URL ?? "";
+      const backendToken = env.BROWSER_AUTOMATION_TOKEN ?? "";
+      if (!endpoint || !backendToken) {
+        const unavailable = { status: "not_configured", message: "The authenticated Browser Use backend has not been deployed or connected yet. The research-only ask_flybrain tool remains available." };
+        return json({ jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: JSON.stringify(unavailable) }], structuredContent: unavailable, isError: true } });
+      }
+      let target: URL;
+      try {
+        target = new URL(endpoint);
+        if (target.protocol !== "https:" || target.username || target.password || target.search || target.hash) throw new Error("invalid endpoint");
+      } catch {
+        return error(rpc.id, -32603, "Browser automation backend URL must be a valid HTTPS endpoint");
+      }
+      try {
+        const upstream = await fetch(target.toString(), {
+          method: "POST",
+          headers: { "content-type": "application/json", "authorization": "Bearer " + backendToken },
+          body: JSON.stringify(rpc),
+          redirect: "manual",
+          signal: AbortSignal.timeout(65000)
+        });
+        const payload = await upstream.text();
+        if (!upstream.ok) return error(rpc.id, -32002, "Browser automation backend returned HTTP " + upstream.status);
+        return new Response(payload, { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+      } catch {
+        return error(rpc.id, -32003, "Browser automation backend is unreachable or timed out");
+      }
+    }
+    const question = args.question;
     if (name !== "ask_flybrain" || typeof question !== "string" || !question.trim() || question.length > 12000) return error(rpc.id, -32602, "Invalid tool or question");
     const research_context = await retrieve(question.trim());
     const result = {
@@ -123,6 +195,6 @@ export default {
     const clientKey = request.headers.get("cf-connecting-ip") ?? "anonymous";
     const { success } = await env.FLYBRAIN_PUBLIC_LIMITER.limit({ key: clientKey });
     if (!success) return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429);
-    return handleMcp(request);
+    return handleMcp(request, env);
   }
 };
