@@ -1,0 +1,12 @@
+{
+  "name": "flybrain-cloudflare-staging-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Authenticated deployment bridge for the FlyBrain Cloudflare staging Worker",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
