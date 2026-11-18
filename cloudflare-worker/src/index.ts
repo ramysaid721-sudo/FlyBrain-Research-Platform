@@ -80,7 +80,7 @@ async function handleMcp(request: Request, env: Env): Promise<Response> {
     return json({ jsonrpc: "2.0", id: rpc.id, result: {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "flybrain-research-bridge", version: "0.15.0" },
+      serverInfo: { name: "flybrain-research-bridge", version: "0.16.0" },
       instructions: "Use ask_flybrain to retrieve source-labelled FlyBrain-NOS and URCAL project context. Distinguish documented evidence from interpretation and hypotheses. The synthetic LIF runtime is not a biologically validated fly brain or standalone language model. This server is public and read-only."
     }});
   }
@@ -130,6 +130,8 @@ async function handleMcp(request: Request, env: Env): Promise<Response> {
     const name = rpc.params?.name;
     const args = rpc.params?.arguments ?? {};
     if (typeof name === "string" && name.startsWith("browser_")) {
+      const allowedBrowserTools = new Set(["browser_use_status", "browser_search", "browser_fetch", "browser_research", "browser_run_task"]);
+      if (!allowedBrowserTools.has(name)) return error(rpc.id, -32602, "Unknown browser tool");
       const supplied = (request.headers.get("authorization") ?? "").replace(/^Bearer\\s+/i, "");
       const expected = env.FLYBRAIN_BROWSER_ACCESS_TOKEN ?? "";
       let diff = supplied.length ^ expected.length;
@@ -188,7 +190,7 @@ async function handleMcp(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/health" && request.method === "GET") return json({ status: "ok", service: "flybrain-cloudflare-worker", version: "0.15.0" });
+    if (url.pathname === "/health" && request.method === "GET") return json({ status: "ok", service: "flybrain-cloudflare-worker", version: "0.16.0" });
     if (url.pathname !== "/mcp") return json({ error: "not_found" }, 404);
     if (request.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
 
