@@ -54,6 +54,9 @@ Other supported providers:
 
 ## MCP tools
 
+- browser_search(query, max_results=8): searches public web results through a rendered search page.
+- browser_fetch(url, output_format=markdown, include_links=true): extracts rendered page content.
+- browser_research(question, max_sources=6): searches multiple sources, cross-checks claims, and requests exact source URLs.
 - browser_use_status(): reports whether the optional dependency and selected model configuration are present. It does not claim the browser is live until a task succeeds.
 - browser_run_task(url, goal, max_steps=12, allow_side_effects=false): bounded goal-driven browser run. HTTPS targets only; local/private IP and internal hostnames are rejected. Potentially mutating goals are blocked unless the caller explicitly approves them.
 
