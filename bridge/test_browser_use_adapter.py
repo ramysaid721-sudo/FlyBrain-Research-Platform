@@ -102,3 +102,26 @@ def test_status_separates_http_research_from_interactive_browser(monkeypatch):
     assert result["web_search_ready"] is True
     assert result["web_fetch_ready"] is True
     assert result["interactive_browser_ready"] is False
+
+
+
+def test_http_get_decodes_declared_legacy_charset(monkeypatch):
+    from flybrain_os import browser_use_adapter as adapter
+
+    class FakeResponse:
+        status = 200
+        headers = {"Content-Type": "text/plain; charset=iso-8859-1"}
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def geturl(self): return "https://example.com/text"
+        def read(self, limit): return "caf\xe9".encode("iso-8859-1")
+
+    class FakeOpener:
+        def open(self, request, timeout): return FakeResponse()
+
+    monkeypatch.setattr(adapter, "_validate_url", lambda value: value)
+    monkeypatch.setattr(adapter, "build_opener", lambda *args: FakeOpener())
+    final_url, content_type, body = adapter._http_get("https://example.com/text")
+    assert final_url == "https://example.com/text"
+    assert "iso-8859-1" in content_type
+    assert body == "caf\xe9"
