@@ -59,6 +59,18 @@ class FlyBrainMCP:
                      "description": "Retrieve source-labelled FlyBrain-NOS and URCAL context and optionally consult configured ModelHub providers.",
                      "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "minLength": 1, "maxLength": 12000}}, "required": ["question"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": True}},
+                    {"name": "browser_search", "title": "Search the public web",
+                     "description": "Search public web results through a rendered search page and return titles, snippets, and exact URLs. Requires a configured Browser Use runtime.",
+                     "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 1500}, "max_results": {"type": "integer", "minimum": 1, "maximum": 20, "default": 8}}, "required": ["query"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
+                    {"name": "browser_fetch", "title": "Fetch rendered webpage content",
+                     "description": "Read a public HTTPS page in a rendered browser and extract Markdown, text, or JSON-like content with relevant links.",
+                     "inputSchema": {"type": "object", "properties": {"url": {"type": "string", "format": "uri", "maxLength": 2048}, "output_format": {"type": "string", "enum": ["markdown", "text", "json"], "default": "markdown"}, "include_links": {"type": "boolean", "default": True}}, "required": ["url"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
+                    {"name": "browser_research", "title": "Multi-source web research",
+                     "description": "Search and inspect multiple public sources, cross-check claims, and return a report with exact source URLs. Requires a configured Browser Use runtime.",
+                     "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "minLength": 1, "maxLength": 4000}, "max_sources": {"type": "integer", "minimum": 2, "maximum": 12, "default": 6}}, "required": ["question"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "browser_use_status", "title": "Browser automation readiness",
                      "description": "Check whether the optional Browser Use agent, local Chromium, and selected model configuration are installed/configured. This does not launch a browser.",
                      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -89,13 +101,26 @@ class FlyBrainMCP:
                     body = b"".join(self.app(inner, inner_start))
                     data = json.loads(body.decode())
                     return self.send(start, "200 OK", self._tool_result(mid, data, not captured.get("status", "").startswith("200")))
-                if name in {"browser_use_status", "browser_run_task"}:
-                    from .browser_use_adapter import BrowserUseNotConfigured, browser_use_status, run_browser_task
+                if name in {"browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task"}:
+                    from .browser_use_adapter import (BrowserUseNotConfigured, browser_use_status, run_browser_task,
+                        run_browser_search, run_browser_fetch, run_browser_research)
                     try:
                         if name == "browser_use_status":
                             if args:
                                 raise ValueError("browser_use_status accepts no arguments")
                             data = browser_use_status()
+                        elif name == "browser_search":
+                            if set(args) - {"query", "max_results"}:
+                                raise ValueError("Unexpected browser_search argument")
+                            data = run_browser_search(args.get("query"), args.get("max_results", 8))
+                        elif name == "browser_fetch":
+                            if set(args) - {"url", "output_format", "include_links"}:
+                                raise ValueError("Unexpected browser_fetch argument")
+                            data = run_browser_fetch(args.get("url"), args.get("output_format", "markdown"), args.get("include_links", True))
+                        elif name == "browser_research":
+                            if set(args) - {"question", "max_sources"}:
+                                raise ValueError("Unexpected browser_research argument")
+                            data = run_browser_research(args.get("question"), args.get("max_sources", 6))
                         else:
                             url, goal = args.get("url"), args.get("goal")
                             if set(args) - {"url", "goal", "max_steps", "allow_side_effects"}:
