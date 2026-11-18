@@ -4,7 +4,8 @@ import hmac, io, json, os, time
 from collections import defaultdict, deque
 from threading import Lock
 from wsgiref.simple_server import make_server
-from .chat_api import FlyBrainChatApp\nfrom .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
+from .chat_api import FlyBrainChatApp
+from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
