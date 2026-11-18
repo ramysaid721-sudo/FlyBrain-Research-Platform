@@ -5,6 +5,9 @@
 The authenticated Streamable HTTP MCP bridge exposes six tools:
 
 - ask_flybrain(question): retrieve source-labelled FlyBrain-NOS and URCAL project evidence.
+- browser_search(query, max_results): search public web results.
+- browser_fetch(url, output_format, include_links): extract content from a rendered public page.
+- browser_research(question, max_sources): inspect multiple sources and return a source-linked research report.
 - browser_use_status(): inspect the optional Browser Use dependency and model configuration.
 - browser_run_task(url, goal, max_steps, allow_side_effects): run a bounded browser task against an authorized public HTTPS website.
 
