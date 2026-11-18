@@ -90,3 +90,15 @@ def test_dns_private_address_is_blocked(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 443))])
     with pytest.raises(ValueError):
         adapter._validate_url("https://public-looking.example/")
+
+
+def test_status_separates_http_research_from_interactive_browser(monkeypatch):
+    from flybrain_os import browser_use_adapter as adapter
+    monkeypatch.setenv("BROWSER_USE_PROVIDER", "ollama")
+    monkeypatch.setattr(adapter, "_make_llm", lambda: None)
+    monkeypatch.setattr(adapter, "urlopen", None, raising=False)
+    monkeypatch.setitem(sys.modules, "browser_use", None)
+    result = adapter.browser_use_status()
+    assert result["web_search_ready"] is True
+    assert result["web_fetch_ready"] is True
+    assert result["interactive_browser_ready"] is False
