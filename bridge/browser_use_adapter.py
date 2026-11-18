@@ -146,33 +146,39 @@ class _SearchParser(HTMLParser):
         self.limit = limit
         self.results = []
         self._current = None
-        self._snippet = False
+        self._capture = None
+
+    def _flush(self):
+        if self._current is not None and self._current.get("title", "").strip():
+            self.results.append(self._current)
+        self._current = None
+        self._capture = None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         classes = set((attrs.get("class") or "").split())
         if tag == "a" and "result__a" in classes and len(self.results) < self.limit:
+            self._flush()
             self._current = {"title": "", "url": attrs.get("href", ""), "snippet": ""}
-        elif self._current is not None and tag in {"a", "div", "td"} and ("result__snippet" in classes or "result-snippet" in classes):
-            self._snippet = True
+            self._capture = "title"
+        elif self._current is not None and tag == "a" and ({"result__snippet", "result-snippet"} & classes):
+            self._capture = "snippet"
 
     def handle_endtag(self, tag):
-        if self._current is not None and tag == "a" and self._current.get("title"):
-            self._current["title"] = self._current["title"].strip()
-        if self._current is not None and tag in {"div", "td"} and self._snippet:
-            self._snippet = False
-        if self._current is not None and tag == "a":
-            if self._current.get("title"):
-                self.results.append(self._current)
-            self._current = None
+        if tag == "a":
+            self._capture = None
 
     def handle_data(self, data):
         if self._current is None:
             return
-        if self._snippet:
+        if self._capture == "snippet":
             self._current["snippet"] += data
-        else:
+        elif self._capture == "title":
             self._current["title"] += data
+
+    def close(self):
+        super().close()
+        self._flush()
 
 
 def _normalise_search_url(raw: str) -> str:
