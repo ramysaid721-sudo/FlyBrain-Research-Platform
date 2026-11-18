@@ -5,15 +5,13 @@ or external LLM. Interactive browser control remains an optional Browser Use ext
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import socket
-import time
 from html.parser import HTMLParser
 from ipaddress import ip_address, ip_address as _ip
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 class BrowserUseNotConfigured(RuntimeError):
@@ -184,8 +182,10 @@ class _SearchParser(HTMLParser):
 def _normalise_search_url(raw: str) -> str:
     if not raw:
         return ""
+    if raw.startswith("//"):
+        raw = "https:" + raw
     parsed = urlparse(raw)
-    if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+    if parsed.hostname and parsed.hostname.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
         target = parse_qs(parsed.query).get("uddg", [""])[0]
         return unquote(target)
     return raw
@@ -327,14 +327,14 @@ def run_browser_fetch(url: str, output_format: str = "markdown", include_links: 
         raise ValueError("output_format must be markdown, text, or json")
     if not isinstance(include_links, bool):
         raise ValueError("include_links must be boolean")
-    final_url, content_type, body = _http_get(url, timeout=12, max_bytes=1_500_000)
+    final_url, content_type, body = _http_get(url, timeout=8, max_bytes=1_500_000)
     parser = _PageParser()
     parser.feed(body)
     content = parser.page_text()
     links = []
     if include_links:
         for item in parser.links[:100]:
-            raw = item.get("href", "").strip()
+            raw = urljoin(final_url, item.get("href", "").strip())
             if raw.startswith("https://"):
                 try:
                     safe = _validate_url(raw)
