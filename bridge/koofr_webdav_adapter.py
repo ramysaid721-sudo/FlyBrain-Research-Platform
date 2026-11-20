@@ -70,12 +70,50 @@ def koofr_webdav_status() -> dict:
         "provider": "koofr_webdav",
         "endpoint": KOOFR_WEBDAV_ENDPOINT,
         "configured": configured,
+        "connection_verified": False,
         "write_enabled": os.environ.get("FLYBRAIN_KOOFR_WEBDAV_ALLOW_WRITE", "").lower() == "true",
         "max_object_bytes": MAX_OBJECT_BYTES,
         "redirects_followed": False,
         "credentials_exposed": False,
-        "ready": configured,
+        "ready": False,
+        "note": "Credential presence is not proof of a successful WebDAV connection; call the read-only probe."
     }
+
+
+def koofr_webdav_probe() -> dict:
+    body = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>'
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        KOOFR_WEBDAV_ENDPOINT,
+        data=body,
+        headers={**_headers(), "Content-Type": "application/xml; charset=utf-8", "Depth": "0"},
+        method="PROPFIND",
+    )
+    try:
+        with _open(request) as response:
+            status = getattr(response, "status", 200)
+            if status != 207:
+                raise KoofrStorageError("Koofr WebDAV probe returned unexpected HTTP " + str(status))
+            response.read(65536)
+            return {
+                "status": "connected",
+                "provider": "koofr_webdav",
+                "connection_verified": True,
+                "http_status": status,
+                "write_enabled": os.environ.get("FLYBRAIN_KOOFR_WEBDAV_ALLOW_WRITE", "").lower() == "true",
+            }
+    except urllib.error.HTTPError as exc:
+        if exc.code in {301, 302, 303, 307, 308}:
+            raise KoofrStorageError("WebDAV redirect rejected") from None
+        if exc.code == 401:
+            raise KoofrStorageError("Koofr WebDAV rejected the application-specific credentials") from None
+        raise KoofrStorageError("Koofr WebDAV probe failed with HTTP " + str(exc.code)) from None
+    except urllib.error.URLError:
+        raise KoofrStorageError("Koofr WebDAV probe could not reach the configured endpoint") from None
+    except TimeoutError:
+        raise KoofrStorageError("Koofr WebDAV probe timed out") from None
 
 
 def koofr_webdav_read(object_key: str) -> dict:
@@ -99,6 +137,8 @@ def koofr_webdav_read(object_key: str) -> dict:
         raise KoofrStorageError("Koofr WebDAV read failed with HTTP " + str(exc.code)) from None
     except urllib.error.URLError:
         raise KoofrStorageError("Koofr WebDAV read could not reach the configured endpoint") from None
+    except TimeoutError:
+        raise KoofrStorageError("Koofr WebDAV read timed out") from None
 
 
 def koofr_webdav_write(object_key: str, content_base64: str, confirm_write: bool) -> dict:
@@ -136,3 +176,5 @@ def koofr_webdav_write(object_key: str, content_base64: str, confirm_write: bool
         raise KoofrStorageError("Koofr WebDAV write failed with HTTP " + str(exc.code)) from None
     except urllib.error.URLError:
         raise KoofrStorageError("Koofr WebDAV write could not reach the configured endpoint") from None
+    except TimeoutError:
+        raise KoofrStorageError("Koofr WebDAV write timed out") from None
