@@ -1,0 +1,4 @@
+-- No-op compatibility marker.
+-- The actual migration was applied to Staging and recorded as 20261120205828.
+-- Its canonical source is supabase/migrations/20261120205828_add_task_capability_tokens.sql.
+-- Retained to avoid deleting an already-published branch path; safe for later db push.

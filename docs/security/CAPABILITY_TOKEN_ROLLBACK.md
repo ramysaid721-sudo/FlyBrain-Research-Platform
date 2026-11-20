@@ -1,22 +1,22 @@
-# Capability-token emergency rollback — Staging only
+# Capability-token rollback — Staging only
 
-WARNING: This rollback deliberately restores UUID-only status RPCs and reopens the access-control weakness. Never apply it to Production. Use only if the Staging release is unusable.
+The capability-token migration replaces UUID-only task and group status RPCs. Rolling it back deliberately reopens the prior access-control weakness. Never apply a rollback to Production.
 
-1. Restore the exact pre-change MCP Edge Function source v26 first.
-2. Apply the SQL below in Staging only.
-3. Verify the restored function signatures and grants, then verify MCP health.
-4. Do not promote the rolled-back state.
+## Current rollback readiness
 
-```sql
-DROP FUNCTION IF EXISTS public.flybrain_task_group_status(uuid,text);
-DROP FUNCTION IF EXISTS public.flybrain_task_status(uuid,text);
-DROP FUNCTION IF EXISTS public.flybrain_enqueue_task_group(jsonb,text,text,text);
-DROP FUNCTION IF EXISTS public.flybrain_enqueue_task(text,jsonb,text,text);
-ALTER TABLE public.flybrain_task_runs DROP CONSTRAINT IF EXISTS flybrain_task_runs_access_token_hash_format, DROP COLUMN IF EXISTS access_token_hash;
-ALTER TABLE private.flybrain_task_groups DROP CONSTRAINT IF EXISTS flybrain_task_groups_access_token_hash_format, DROP COLUMN IF EXISTS access_token_hash;
+**Do not execute a rollback from this document yet.** The original pre-capability SQL definitions for all four RPCs are not included in this branch's migration history. The old MCP v26 source is preserved on the separate recovery branch, but that source alone does not reconstruct the exact database function bodies and grants.
 
--- Recreate the four legacy function definitions and grants from the pre-change
--- migration/deployment snapshot before reopening MCP. Do not leave MCP v26 offline.
-```
+Before rollback, recover and review the exact pre-change definitions for:
+- `public.flybrain_enqueue_task(text,jsonb,text)`
+- `public.flybrain_enqueue_task_group(jsonb,text,text)`
+- `public.flybrain_task_status(uuid)`
+- `public.flybrain_task_group_status(uuid)`
 
-The database and deployed MCP sources are preserved on the dedicated branch, so rollback inputs are recoverable. This rollback is intentionally gated because restoring UUID-only access weakens security.
+Use a verified pre-change database/schema snapshot or archived migration source. Then prepare one atomic Staging-only rollback that:
+1. Restores those exact function definitions and grants.
+2. Restores the matching MCP v26 source.
+3. Drops the capability-token overloads and hash columns only after the restored functions are verified.
+4. Runs MCP health, task submission, and status smoke tests.
+5. Confirms the project remains Staging.
+
+Do not drop the hash columns or restore UUID-only access until all four legacy function definitions and grants have been recovered and reviewed. The existing token-protected Staging state is the safer operating state.

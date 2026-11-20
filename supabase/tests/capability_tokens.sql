@@ -10,6 +10,7 @@ DECLARE
   v_group_duplicate jsonb;
   v_task_id uuid;
   v_group_id uuid;
+  v_count integer;
 BEGIN
   v_task := public.flybrain_enqueue_task('research_search',
     jsonb_build_object('query','capability token task rollback test','page_size',1),
@@ -42,6 +43,46 @@ BEGIN
      public.flybrain_task_group_status(v_group_id,v_wrong) IS NOT NULL THEN
     RAISE EXCEPTION 'duplicate submission changed group capability';
   END IF;
+
+  -- Group capability also authorizes its child task rows.
+  SELECT task_id INTO v_task_id
+  FROM private.flybrain_task_group_items
+  WHERE group_id=v_group_id
+  ORDER BY ordinal
+  LIMIT 1;
+  IF v_task_id IS NULL THEN RAISE EXCEPTION 'group child task missing'; END IF;
+  IF public.flybrain_task_status(v_task_id,v_hash) IS NULL THEN
+    RAISE EXCEPTION 'group capability rejected for child task';
+  END IF;
+  IF public.flybrain_task_status(v_task_id,v_wrong) IS NOT NULL THEN
+    RAISE EXCEPTION 'wrong group capability accepted for child task';
+  END IF;
+
+  -- Pre-existing rows have NULL capability hashes and must fail closed.
+  SELECT task_id INTO v_task_id
+  FROM public.flybrain_task_runs
+  WHERE access_token_hash IS NULL
+  LIMIT 1;
+  IF v_task_id IS NOT NULL AND public.flybrain_task_status(v_task_id,v_hash) IS NOT NULL THEN
+    RAISE EXCEPTION 'legacy task without capability unexpectedly accessible';
+  END IF;
+  SELECT group_id INTO v_group_id
+  FROM private.flybrain_task_groups
+  WHERE access_token_hash IS NULL
+  LIMIT 1;
+  IF v_group_id IS NOT NULL AND public.flybrain_task_group_status(v_group_id,v_hash) IS NOT NULL THEN
+    RAISE EXCEPTION 'legacy group without capability unexpectedly accessible';
+  END IF;
+
+  -- UUID-only status overloads must not remain callable.
+  SELECT count(*) INTO v_count
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public'
+    AND ((p.proname='flybrain_task_status' AND pg_get_function_identity_arguments(p.oid)='p_task_id uuid')
+      OR (p.proname='flybrain_task_group_status' AND pg_get_function_identity_arguments(p.oid)='p_group_id uuid'));
+  IF v_count <> 0 THEN RAISE EXCEPTION 'UUID-only status overload remains'; END IF;
+
 END
 $capability_tests$;
 ROLLBACK;
