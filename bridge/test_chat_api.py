@@ -127,3 +127,48 @@ def test_guard_blocks_sensitive_payload_before_network(monkeypatch):
             data_class="public", contains_secrets=False, contains_personal_data=False,
         )
     assert network_calls == []
+
+
+def test_openrouter_requires_explicit_public_question_and_transfer_consent(tmp_path, monkeypatch):
+    import flybrain_os.chat_api as chat_api
+    token = "x" * 40
+    monkeypatch.setenv("FLYBRAIN_OPENROUTER_ENABLED", "true")
+    monkeypatch.setattr(
+        chat_api,
+        "retrieve_project_context",
+        lambda question: [{"source": "README.md", "excerpt": "Public project documentation."}],
+    )
+    monkeypatch.setattr(
+        chat_api,
+        "generate_public_project_answer",
+        lambda *args, **kwargs: pytest.fail("OpenRouter must not be called without both attestations"),
+        raising=False,
+    )
+    app = FlyBrainChatApp(token, tmp_path / "ledger.sqlite3")
+    response, body = invoke(
+        app, "POST", "/v1/ask",
+        {"question": "Summarize the public FlyBrain README", "allow_external_public_research": True},
+        token,
+    )
+    assert response["status"] == "403 Forbidden"
+    assert body["external_data_transfer"] is False
+
+
+def test_openrouter_requires_pinned_public_context(tmp_path, monkeypatch):
+    import flybrain_os.chat_api as chat_api
+    token = "x" * 40
+    monkeypatch.setenv("FLYBRAIN_OPENROUTER_ENABLED", "true")
+    monkeypatch.setattr(chat_api, "retrieve_project_context", lambda question: [])
+    app = FlyBrainChatApp(token, tmp_path / "ledger.sqlite3")
+    response, body = invoke(
+        app, "POST", "/v1/ask",
+        {
+            "question": "Summarize public FlyBrain research",
+            "question_is_public": True,
+            "allow_external_public_research": True,
+        },
+        token,
+    )
+    assert response["status"] == "422 Unprocessable Entity"
+    assert body["error"] == "trusted_public_project_context_unavailable"
+    assert body["external_data_transfer"] is False
