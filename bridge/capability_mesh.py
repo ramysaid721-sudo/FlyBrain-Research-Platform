@@ -28,7 +28,7 @@ _CAPABILITIES = (
     Capability(
         "flybrain.project_context", "local", "Retrieve source-labelled local project context",
         ("retrieve_project_context",), ("public", "internal", "confidential"),
-        False, 0.0, "available", True,
+        False, 0.0, "not_ready_until_runtime_adapter_is_wired", True,
     ),
     Capability(
         "web.public_search", "http_research", "Search public HTTPS sources",
