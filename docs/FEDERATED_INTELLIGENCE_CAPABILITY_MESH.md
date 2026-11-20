@@ -216,10 +216,10 @@ Required runtime configuration:
 
 Safety controls:
 - Public HTTPS targets only; existing URL validation rejects private/non-public address targets before dispatch.
-- Browserless receives an exact-host `allowedDomains` restriction for the requested target, limiting cross-host navigation and subresource access.
+- The adapter uses Browserless `/function` with Puppeteer request interception; only HTTPS requests to the exact requested hostname are continued. Cross-host redirects and subresources are aborted. It does not rely on an undocumented `allowedDomains` parameter.
 - Request timeout is bounded; response size is capped at 1.5 MB.
 - API token is never included in returned result data or error messages.
-- The adapter is read-only and treats page content as untrusted.
+- The adapter is read-only and treats page content as untrusted. Browserless REST calls are stateless and close the browser after the request; this path does not provide persistent authenticated sessions.
 - No Browserless token is present in source control and no account has been connected by this code change.
 - The adapter is not enabled by default. No paid or metered calls occur unless an operator provisions the token, explicitly opts in, and selects the provider.
 
@@ -227,3 +227,15 @@ Verification boundary:
 - Unit tests cover fail-closed configuration, explicit usage opt-in, target-host restriction, response parsing, and token non-disclosure.
 - These tests have been added to the staging test suite but have not yet been confirmed passing in GitHub Actions because the current Actions artifact/log retrieval is returning `BlobNotFound`.
 - Live Browserless verification remains pending a user-provisioned API token and explicit usage opt-in.
+
+### Browserless API contract verification — 2026-11-20
+
+Official Browserless REST documentation confirms that `/content` accepts a JSON POST and returns rendered HTML, while `/function` accepts an ESM JavaScript POST and returns the declared response type. The adapter therefore uses `/function` to install Puppeteer request interception before navigation; the previous draft's `allowedDomains` query parameter was removed because it was not documented in the official API contract.
+
+References:
+- https://docs.browserless.io/rest-apis/content
+- https://docs.browserless.io/rest-apis/function
+- https://docs.browserless.io/rest-apis/request-configuration
+- https://docs.browserless.io/rest-apis/intro
+
+Browserless REST endpoints are stateless and do not preserve cookies or sessions between calls. Persistent login workflows would require a separate BaaS session integration and must be designed and authorized independently.
