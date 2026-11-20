@@ -21,6 +21,8 @@ PATCHES = {
     ROOT / "bridge" / "test_service_emulation_governance.py": Path("components/FlyBrain-NOS/tests/test_service_emulation_governance.py"),
     ROOT / "bridge" / "test_service_emulation_planner.py": Path("components/FlyBrain-NOS/tests/test_service_emulation_planner.py"),
     ROOT / "bridge" / "test_koofr_webdav_adapter.py": Path("components/FlyBrain-NOS/tests/test_koofr_webdav_adapter.py"),
+    ROOT / "bridge" / "openrouter_client.py": Path("components/FlyBrain-NOS/flybrain_os/openrouter_client.py"),
+    ROOT / "bridge" / "test_openrouter_client.py": Path("components/FlyBrain-NOS/tests/test_openrouter_client.py"),
     ROOT / "worker" / "model_data_policy.py": Path("components/FlyBrain-NOS/flybrain_os/model_data_policy.py"),
     ROOT / "worker" / "model_data_scanner.py": Path("components/FlyBrain-NOS/flybrain_os/model_data_scanner.py"),
 }
