@@ -14,8 +14,6 @@ from pathlib import Path
 from wsgiref.simple_server import make_server
 from . import model_hub
 from .model_data_scanner import assert_external_model_payload_safe
-from .model_data_policy import ExternalModelDataPolicyError
-from .openrouter_client import OpenRouterBridgeError, generate_public_project_answer
 
 ModelConsultation = model_hub.ModelConsultation
 
@@ -136,6 +134,8 @@ class FlyBrainChatApp:
                 context_text = "\n\n".join(x["source"] + ": " + x["excerpt"] for x in context)
                 enriched_question = question.strip() + ("\n\nProject evidence context:\n" + context_text if context_text else "")
                 if os.environ.get("FLYBRAIN_OPENROUTER_ENABLED", "false").strip().lower() == "true":
+                    from .model_data_policy import ExternalModelDataPolicyError
+                    from .openrouter_client import OpenRouterBridgeError, generate_public_project_answer
                     if data.get("allow_external_public_research") is not True:
                         return self._response(start_response, "403 Forbidden", {
                             "error": "explicit_public_research_consent_required",
