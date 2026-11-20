@@ -8,6 +8,7 @@ from .chat_api import FlyBrainChatApp
 from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
 from .capability_mesh import TaskContractError, capability_registry, build_task_contract, plan_task_route, execute_read_only_capability
 from .service_emulation_governance import evaluate_component_review
+from .service_emulation_planner import plan_service_emulation
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -43,7 +44,7 @@ class FlyBrainMCP:
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route", "evaluate_component_review"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route", "evaluate_component_review", "plan_service_emulation"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
@@ -176,6 +177,12 @@ class FlyBrainMCP:
                          "component_record": {"type": "object", "description": "Component provenance and review evidence record"}},
                          "required": ["component_record"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "plan_service_emulation", "title": "Plan a lawful service-emulation candidate",
+                     "description": "Rank caller-supplied service candidates only when provenance, licence, terms, security, cost, data classification, deployment mode, and operational evidence pass. Does not discover, install, execute, activate, or grant legal clearance to any service. Authenticated.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "request": {"type": "object", "description": "Requirements and candidate evidence for deterministic planning"}},
+                         "required": ["request"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -249,6 +256,14 @@ class FlyBrainMCP:
                     except (ValueError, TypeError) as exc:
                         raise ValueError(str(exc)) from exc
                     return self.send(start, "200 OK", self._tool_result(mid, decision, decision.get("decision") == "blocked"))
+                if name == "plan_service_emulation":
+                    if set(args) != {"request"}:
+                        raise ValueError("plan_service_emulation requires only request")
+                    try:
+                        plan = plan_service_emulation(args["request"])
+                    except (ValueError, TypeError) as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, plan, plan.get("status") == "no_eligible_candidate"))
                 if name == "ask_flybrain":
                     q = args.get("question")
                     if not isinstance(q, str) or not q.strip() or len(q) > 12000:
