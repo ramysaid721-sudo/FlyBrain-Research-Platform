@@ -130,6 +130,19 @@ async function retrieve(question: string) {
 
 
 
+const PUBLIC_QUERY_SENSITIVE_PATTERNS = [
+  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i,
+  /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
+  /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/,
+  /\bsk-[A-Za-z0-9_-]{20,}\b/,
+  /(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*\S+/i
+];
+function assertPublicExternalQuery(query: string) {
+  if (PUBLIC_QUERY_SENSITIVE_PATTERNS.some(pattern => pattern.test(query))) {
+    throw new Error("query_blocked_by_external_data_safety_policy");
+  }
+}
+
 async function researchSearch(args: any) {
   if (!args || typeof args !== "object" || Array.isArray(args) ||
       Object.keys(args).some(k => !["query","page_size"].includes(k)) ||
@@ -139,6 +152,7 @@ async function researchSearch(args: any) {
   const pageSize = args.page_size ?? 5;
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 10) throw new Error("page_size must be an integer from 1 to 10");
   const query = args.query.trim();
+  assertPublicExternalQuery(query);
   const params = new URLSearchParams({ "query.bibliographic": query, rows: String(pageSize) });
   const response = await fetch(`https://api.crossref.org/works?${params.toString()}`, {
     headers: { accept: "application/json" },
@@ -237,14 +251,7 @@ function validateTaskSubmit(args: any) {
     throw new Error("task_submit requires a query, data_classification=public, optional page_size and idempotency_key");
   }
   const query = args.query.trim();
-  const sensitivePatterns = [
-    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i,
-    /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
-    /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/,
-    /\bsk-[A-Za-z0-9_-]{20,}\b/,
-    /(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*\S+/i
-  ];
-  if (sensitivePatterns.some(pattern => pattern.test(query))) throw new Error("task_query_blocked_by_data_safety_policy");
+  assertPublicExternalQuery(query);
   const pageSize = args.page_size ?? 5;
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 10) throw new Error("page_size must be 1 to 10");
   const idempotency = args.idempotency_key ?? null;
@@ -441,7 +448,7 @@ Deno.serve(async (request: Request) => {
     {
       name: "research_search",
       title: "Scientific literature search",
-      description: "Search scholarly literature metadata through the public Crossref API. The query is sent to Crossref; returns bibliographic metadata and abstracts when available. This is not general web search.",
+      description: "Search public scholarly literature metadata through the public Crossref API. The query is sent to Crossref. Submit only public bibliographic search terms; do not submit unpublished research, private data, personal data, credentials, or secrets. Known email and credential patterns are blocked. This is not general web search.",
       inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 400 }, page_size: { type: "integer", minimum: 1, maximum: 10, default: 5 } }, required: ["query"], additionalProperties: false },
       annotations: { readOnlyHint: true, openWorldHint: true }
     },
