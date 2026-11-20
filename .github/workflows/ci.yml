@@ -32,6 +32,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Run Gemini mock adapter tests
+        run: python -m unittest discover -s tests -p 'test_gemini_mock.py' -v
+
       - name: Extract release source
         run: |
           python -m zipfile -e FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip .release
