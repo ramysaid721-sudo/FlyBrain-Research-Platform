@@ -33,14 +33,34 @@ def test_original_component_can_be_eligible_with_verified_provenance():
     assert result["blockers"] == []
 
 
-def test_unknown_third_party_licence_fails_closed():
+def test_unknown_third_party_licence_is_rejected():
+    with pytest.raises(ValueError):
+        evaluate_component_review(base_record(
+            component_type="open_source",
+            source_url="https://example.org/project",
+            licence_id="NOASSERTION",
+            licence_review_status="approved",
+        ))
+
+
+def test_third_party_component_requires_licence_review():
     result = evaluate_component_review(base_record(
         component_type="open_source",
         source_url="https://example.org/project",
-        licence_id="NOASSERTION",
+        licence_id="MIT",
     ))
     assert result["decision"] == "blocked"
     assert any("licence review" in item for item in result["blockers"])
+
+
+def test_approved_third_party_component_can_be_eligible_for_human_approval():
+    result = evaluate_component_review(base_record(
+        component_type="open_source",
+        source_url="https://example.org/project",
+        licence_id="MIT",
+        licence_review_status="approved",
+    ))
+    assert result["decision"] == "eligible_for_human_approval"
 
 
 def test_unverified_provenance_blocks_component():
