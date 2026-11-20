@@ -56,7 +56,7 @@ def _ensure_release() -> None:
     package_root = RELEASE_ROOT / "components/FlyBrain-NOS/flybrain_os"
     overlay = ROOT / "bridge"
     package_root.mkdir(parents=True, exist_ok=True)
-    for filename in ("chat_api.py", "mcp_server.py", "browser_use_adapter.py", "tool_manager.py", "capability_mesh.py"):
+    for filename in ("chat_api.py", "mcp_server.py", "browser_use_adapter.py", "tool_manager.py", "capability_mesh.py", "service_emulation_governance.py", "service_emulation_planner.py"):
         source = overlay / filename
         if not source.is_file():
             raise RuntimeError("Missing FlyBrain bridge overlay: " + filename)
