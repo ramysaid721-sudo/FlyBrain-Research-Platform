@@ -1,3 +1,4 @@
+import { assertPublicExternalQuery } from "../_shared/public_query_safety.ts";
 const HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -61,6 +62,7 @@ async function runResearchSearch(payload: Record<string, unknown>, attempt: numb
     throw new Error("invalid_task_payload");
   }
   const query = payload.query.trim();
+  assertPublicExternalQuery(query);
   const params = new URLSearchParams({ "query.bibliographic": query, rows: String(payload.page_size) });
   const response = await fetch(`https://api.crossref.org/works?${params.toString()}`, {
     headers: { accept: "application/json" },
