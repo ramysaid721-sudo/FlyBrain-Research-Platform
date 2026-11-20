@@ -12,7 +12,6 @@ import os
 import re
 from pathlib import Path
 from wsgiref.simple_server import make_server
-from functools import partial
 from . import model_hub
 from .model_data_scanner import assert_external_model_payload_safe
 
