@@ -55,7 +55,7 @@ def test_ask_returns_gateway_error_when_all_providers_fail(tmp_path, monkeypatch
     assert body["status"] == "all_providers_failed"
 
 
-def test_ask_requires_public_attestation_when_provider_is_configured(tmp_path, monkeypatch):
+def test_client_attestation_cannot_enable_external_provider(tmp_path, monkeypatch):
     token = "x" * 40
     called = []
     monkeypatch.setattr(
@@ -67,9 +67,19 @@ def test_ask_requires_public_attestation_when_provider_is_configured(tmp_path, m
         lambda *args, **kwargs: called.append((args, kwargs)),
     )
     app = FlyBrainChatApp(token, tmp_path / "ledger.sqlite3")
-    response, body = invoke(app, "POST", "/v1/ask", {"question": "public question"}, token)
-    assert response["status"] == "400 Bad Request"
-    assert body["error"] == "public_data_attestation_required"
+    # Even an apparently clean client declaration is not trusted provenance.
+    payload = {
+        "question": "public question",
+        "public_data_attestation": {
+            "classification": "public",
+            "contains_secrets": False,
+            "contains_personal_data": False,
+        },
+    }
+    response, body = invoke(app, "POST", "/v1/ask", payload, token)
+    assert response["status"] == "503 Service Unavailable"
+    assert body["error"] == "external_inference_disabled"
+    assert body["external_data_transfer"] is False
     assert called == []
 
 
