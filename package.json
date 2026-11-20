@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "engines": {
-    "node": ">=22"
+    "node": "26.x"
   },
   "dependencies": {
     "@vercel/sandbox": "3.6.1"
