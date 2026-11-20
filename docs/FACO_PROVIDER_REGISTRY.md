@@ -4,6 +4,29 @@ Status: isolated prototype on `faco-provider-registry-prototype`; not connected 
 
 ## Purpose
 
+## External reasoning-model data boundary
+
+FlyBrain's external reasoning-model policy is **public data only**. Before any
+external inference request is constructed, the caller must pass the input through
+`worker.model_data_policy.assert_external_model_input_allowed` with an exact
+`data_class="public"` classification and explicit false values for both
+`contains_secrets` and `contains_personal_data`. Unknown, internal, private,
+confidential, secret-bearing, personal-data-bearing, or unverified inputs fail
+closed.
+
+This guard validates caller-supplied classification flags; it does **not**
+inspect, scan, redact, or prove the contents of a payload. It must therefore be
+used only after a trusted classification step. Never pass credentials, API
+keys, tokens, private source code, personal information, or operational secrets
+to an external model. No model provider is activated by this policy change.
+
+The dedicated policy tests are run with the provider-registry tests:
+
+```bash
+python -m unittest worker.test_provider_registry worker.test_model_data_policy -v
+```
+
+
 Introduce a deterministic provider-selection boundary before adding additional compute providers. The selector is side-effect free: it does not create resources, access credentials, make network requests, or launch work.
 
 ## Fail-closed admission rules
