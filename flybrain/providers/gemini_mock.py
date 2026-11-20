@@ -46,6 +46,8 @@ class GeminiMockAdapter:
     """A deterministic local substitute; it cannot contact Google."""
 
     def __init__(self, *, enabled: bool = False) -> None:
+        if type(enabled) is not bool:
+            raise TypeError("enabled must be a bool")
         self._enabled = enabled
 
     def review(self, text: str) -> MockResponse:
