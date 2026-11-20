@@ -57,6 +57,63 @@ function validateAllowlist(value) {
   return [...new Set(value.map((v) => v.toLowerCase()))];
 }
 
+function base64UrlEncode(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+}
+function base64UrlDecode(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error("Invalid session token encoding");
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+async function sessionSigningKey(env) {
+  if (typeof env.FLYBRAIN_BROWSER_API_TOKEN !== "string" || env.FLYBRAIN_BROWSER_API_TOKEN.length < 32) {
+    throw new Error("Session signing is not configured");
+  }
+  return crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(env.FLYBRAIN_BROWSER_API_TOKEN),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]
+  );
+}
+async function signSessionToken(env, sessionId, allowedDomains, expiresAt = Date.now() + 900000) {
+  const payload = {
+    version: 1,
+    sessionId,
+    allowedDomains: validateAllowlist(allowedDomains),
+    expiresAt
+  };
+  const encoded = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const key = await sessionSigningKey(env);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(encoded));
+  return encoded + "." + base64UrlEncode(new Uint8Array(signature));
+}
+async function readSessionToken(env, token) {
+  if (typeof token !== "string" || token.length > 4096) throw new Error("Invalid or expired browser session token");
+  const parts = token.split(".");
+  if (parts.length !== 2) throw new Error("Invalid browser session token");
+  const key = await sessionSigningKey(env);
+  const signature = base64UrlDecode(parts[1]);
+  const valid = await crypto.subtle.verify("HMAC", key, signature, new TextEncoder().encode(parts[0]));
+  if (!valid) throw new Error("Browser session token signature is invalid");
+  let payload;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
+  } catch {
+    throw new Error("Browser session token payload is invalid");
+  }
+  if (payload.version !== 1 || typeof payload.sessionId !== "string" ||
+      !payload.sessionId || payload.sessionId.length > 512 ||
+      !Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now()) {
+    throw new Error("Browser session token is expired or invalid");
+  }
+  return { sessionId: payload.sessionId, allowedDomains: validateAllowlist(payload.allowedDomains) };
+}
+async function resolveSessionId(env, token) {
+  return (await readSessionToken(env, token)).sessionId;
+}
+
 let nextCommandId = 0;
 async function connectCdp(env, sessionId) {
   const session = await env.BROWSER.getSession(sessionId);
@@ -158,9 +215,10 @@ async function callTool(name, args, env) {
           return { title, readyState };
         });
         const liveView = await env.BROWSER.getLiveView(session.sessionId);
+        const sessionToken = await signSessionToken(env, session.sessionId, allowedDomains);
         return textResult({
           status: "opened",
-          sessionId: session.sessionId,
+          sessionId: sessionToken,
           targetId: session.targets?.find((t) => t.type === "page")?.targetId ?? null,
           url,
           title: result.title || "",
@@ -173,17 +231,17 @@ async function callTool(name, args, env) {
       }
     }
     case "browser_session_navigate": {
-      const url = new URL(args.url);
-      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Invalid navigation URL");
-      const result = await withPage(env, args.sessionId, async (cdp) => {
-        await sendCdp(cdp.socket, "Page.navigate", { url: url.toString() }, cdp.sessionId);
+      const session = await readSessionToken(env, args.sessionId);
+      const url = validateUrl(args.url, session.allowedDomains);
+      const result = await withPage(env, session.sessionId, async (cdp) => {
+        await sendCdp(cdp.socket, "Page.navigate", { url }, cdp.sessionId);
         const readyState = await waitForReady(cdp);
         return { url: await evaluate(cdp, "location.href"), title: await evaluate(cdp, "document.title"), readyState };
       });
       return textResult(result);
     }
     case "browser_session_snapshot": {
-      const result = await withPage(env, args.sessionId, async (cdp) => ({
+      const result = await withPage(env, await resolveSessionId(env, args.sessionId), async (cdp) => ({
         url: await evaluate(cdp, "location.href"),
         title: await evaluate(cdp, "document.title"),
         text: String(await evaluate(cdp, "document.body ? document.body.innerText : ''") || "").slice(0, MAX_TEXT),
@@ -193,14 +251,14 @@ async function callTool(name, args, env) {
     }
     case "browser_session_click": {
       if (typeof args.selector !== "string" || args.selector.length > 1000) throw new Error("A CSS selector is required");
-      const result = await withPage(env, args.sessionId, async (cdp) => evaluate(cdp,
+      const result = await withPage(env, await resolveSessionId(env, args.sessionId), async (cdp) => evaluate(cdp,
         `(() => { const el = document.querySelector(${JSON.stringify(args.selector)}); if (!el) return {clicked:false,reason:"not_found"}; el.click(); return {clicked:true,tag:el.tagName,text:(el.innerText||el.getAttribute("aria-label")||"").slice(0,200)}; })()`
       ));
       return textResult(result);
     }
     case "browser_session_type": {
       if (typeof args.selector !== "string" || args.selector.length > 1000 || typeof args.text !== "string" || args.text.length > 10000) throw new Error("A valid selector and text are required");
-      const result = await withPage(env, args.sessionId, async (cdp) => evaluate(cdp,
+      const result = await withPage(env, await resolveSessionId(env, args.sessionId), async (cdp) => evaluate(cdp,
         `(() => { const el = document.querySelector(${JSON.stringify(args.selector)}); if (!el) return {typed:false,reason:"not_found"}; el.focus(); const setter = Object.getOwnPropertyDescriptor(el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")?.set; if (setter && "value" in el) setter.call(el, ${JSON.stringify(args.text)}); else el.textContent = ${JSON.stringify(args.text)}; el.dispatchEvent(new Event("input",{bubbles:true})); el.dispatchEvent(new Event("change",{bubbles:true})); return {typed:true}; })()`
       ));
       return textResult(result);
@@ -209,14 +267,14 @@ async function callTool(name, args, env) {
       const keyMap = { ENTER: "Enter", TAB: "Tab", ESCAPE: "Escape", BACKSPACE: "Backspace", ARROWDOWN: "ArrowDown", ARROWUP: "ArrowUp", ARROWLEFT: "ArrowLeft", ARROWRIGHT: "ArrowRight", SPACE: " " };
       const key = keyMap[String(args.key || "").toUpperCase()];
       if (!key) throw new Error("Supported keys: ENTER, TAB, ESCAPE, BACKSPACE, ARROWDOWN, ARROWUP, ARROWLEFT, ARROWRIGHT, SPACE");
-      await withPage(env, args.sessionId, async (cdp) => {
+      await withPage(env, await resolveSessionId(env, args.sessionId), async (cdp) => {
         await sendCdp(cdp.socket, "Input.dispatchKeyEvent", { type: "keyDown", key }, cdp.sessionId);
         await sendCdp(cdp.socket, "Input.dispatchKeyEvent", { type: "keyUp", key }, cdp.sessionId);
       });
       return textResult({ pressed: key });
     }
     case "browser_session_screenshot": {
-      const result = await withPage(env, args.sessionId, async (cdp) => sendCdp(cdp.socket, "Page.captureScreenshot", {
+      const result = await withPage(env, await resolveSessionId(env, args.sessionId), async (cdp) => sendCdp(cdp.socket, "Page.captureScreenshot", {
         format: "png",
         captureBeyondViewport: false,
         fromSurface: true
@@ -227,8 +285,9 @@ async function callTool(name, args, env) {
       ]);
     }
     case "browser_session_close": {
-      const result = await env.BROWSER.closeSession(args.sessionId);
-      return textResult({ sessionId: args.sessionId, status: result });
+      const sessionId = await resolveSessionId(env, args.sessionId);
+      const result = await env.BROWSER.closeSession(sessionId);
+      return textResult({ status: result });
     }
     default:
       throw new Error("Unknown tool");
@@ -303,3 +362,5 @@ export default {
     return rpcError(rpc.id, -32601, "Method not found");
   }
 };
+
+export { validateUrl, hostAllowed, signSessionToken, readSessionToken };
