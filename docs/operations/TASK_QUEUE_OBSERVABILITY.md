@@ -193,3 +193,14 @@ A read-only Supabase notebook containing the queue-depth, task-state/retry, end-
 - Notebook ID: `668c1c64-2cc3-4307-82a1-6ba9d0bcfdb0`
 - All seven query cells were executed successfully on 2026-11-20 UTC.
 - The notebook contains SELECT-only SQL and does not display task payloads, results, query text, or credentials.
+
+## 13. Enhanced Staging operations notebook (v2)
+
+The enhanced read-only notebook adds task event coverage, Cron run reliability, and the last 20 Cron execution durations. All ten database query cells executed successfully.
+
+- Notebook: [FlyBrain Staging Operations v2](https://supabase.com/dashboard/project/iudimypauqbkyvjuprgp/explorer/notebook/0375b305-88ac-49b9-b29c-f93c7a8cb45f)
+- Notebook ID: `0375b305-88ac-49b9-b29c-f93c7a8cb45f`
+- Latest observed Cron run: succeeded; duration approximately 0.015 seconds.
+- 262 Cron runs were recorded as succeeded at the time of this check; no unsuccessful runs were present in the returned aggregate.
+- Eight completed tasks predate event instrumentation and have no event rows; this is documented as historical coverage, not treated as current logging failure.
+- Cron queries deliberately omit the job command and return message to avoid disclosing operational configuration.
