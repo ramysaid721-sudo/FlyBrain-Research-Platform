@@ -42,7 +42,7 @@ def success_payload():
         "requested_model_route": "openrouter/free",
         "served_model": "vendor/model:free",
         "answer": "Public repository analysis",
-        "usage": {},
+        "usage": {"cost": 0},
         "external_data_transfer": True,
         "data_scope": "public_project_research",
     }
@@ -88,6 +88,21 @@ def test_rejects_unexpected_or_paid_model_route_response(bridge_environment):
 def test_rejects_served_model_without_free_suffix(bridge_environment):
     payload = success_payload()
     payload["served_model"] = "vendor/paid-model"
+    with patch("flybrain_os.openrouter_client.urlopen", return_value=FakeResponse(payload)):
+        with pytest.raises(OpenRouterBridgeError):
+            generate_public_project_answer("Public question", "Public context")
+
+def test_rejects_nonzero_reported_cost(bridge_environment):
+    payload = success_payload()
+    payload["usage"] = {"cost": 0.000001}
+    with patch("flybrain_os.openrouter_client.urlopen", return_value=FakeResponse(payload)):
+        with pytest.raises(OpenRouterBridgeError):
+            generate_public_project_answer("Public question", "Public context")
+
+
+def test_rejects_missing_reported_cost(bridge_environment):
+    payload = success_payload()
+    payload["usage"] = {}
     with patch("flybrain_os.openrouter_client.urlopen", return_value=FakeResponse(payload)):
         with pytest.raises(OpenRouterBridgeError):
             generate_public_project_answer("Public question", "Public context")
