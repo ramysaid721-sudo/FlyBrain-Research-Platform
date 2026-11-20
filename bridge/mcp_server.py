@@ -6,6 +6,7 @@ from threading import Lock
 from wsgiref.simple_server import make_server
 from .chat_api import FlyBrainChatApp
 from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
+from .capability_mesh import TaskContractError, capability_registry, build_task_contract, plan_task_route
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -72,7 +73,7 @@ class FlyBrainMCP:
             params = req.get("params") or {}
             tool_name = params.get("name") if method == "tools/call" else None
             public_methods = {"initialize", "ping", "tools/list"}
-            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool"}
+            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route"}
             public_request = method in public_methods or (method == "tools/call" and tool_name in public_tools)
             if not public_request and not hmac.compare_digest(supplied, self.token):
                 return self.send(start, "401 Unauthorized", {"error": "unauthorized"})
@@ -133,6 +134,22 @@ class FlyBrainMCP:
                          "source": {"type": "string", "maxLength": 300}},
                          "required": ["name"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "capability_registry", "title": "Federated capability registry",
+                     "description": "List known provider-neutral capabilities, data classifications, runtime states, and execution boundaries. Metadata only; does not invoke providers.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "plan_task_route", "title": "Plan a privacy-aware task route",
+                     "description": "Create a bounded zero-cost task contract and return eligible capability routes. Confidential and restricted data are forced to local-only routing. Planning only; no provider is invoked and no data is transferred.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "objective": {"type": "string", "minLength": 1, "maxLength": 4000},
+                         "data_classification": {"type": "string", "enum": ["public", "internal", "confidential", "restricted"], "default": "public"},
+                         "allowed_providers": {"type": "array", "items": {"type": "string", "maxLength": 80}, "maxItems": 8},
+                         "allow_network": {"type": "boolean", "default": False},
+                         "max_cost_usd": {"type": "number", "minimum": 0, "maximum": 0, "default": 0},
+                         "deadline_seconds": {"type": "integer", "minimum": 1, "maximum": 3600, "default": 60},
+                         "requested_capability": {"type": "string", "maxLength": 120}},
+                         "required": ["objective"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -163,6 +180,25 @@ class FlyBrainMCP:
                     except ToolPolicyError as exc:
                         raise ValueError(str(exc)) from exc
                     return self.send(start, "200 OK", self._tool_result(mid, assessed, assessed.get("status") == "blocked"))
+                if name == "capability_registry":
+                    if args:
+                        raise ValueError("capability_registry accepts no arguments")
+                    return self.send(start, "200 OK", self._tool_result(mid, capability_registry()))
+                if name == "plan_task_route":
+                    allowed = {"objective", "data_classification", "allowed_providers", "allow_network",
+                               "max_cost_usd", "deadline_seconds", "requested_capability"}
+                    if set(args) - allowed or not isinstance(args.get("objective"), str):
+                        raise ValueError("plan_task_route requires objective and accepts only documented contract fields")
+                    try:
+                        contract = build_task_contract(
+                            args["objective"], args.get("data_classification", "public"),
+                            args.get("allowed_providers", ["local"]), args.get("allow_network", False),
+                            args.get("max_cost_usd", 0.0), args.get("deadline_seconds", 60),
+                        )
+                        planned = plan_task_route(contract, args.get("requested_capability"))
+                    except TaskContractError as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, planned, planned.get("status") == "no_eligible_route"))
                 if name == "ask_flybrain":
                     q = args.get("question")
                     if not isinstance(q, str) or not q.strip() or len(q) > 12000:
