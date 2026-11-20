@@ -19,7 +19,7 @@ Reduce mission completion time by scheduling independent, bounded tasks concurre
 1. Supabase Cron job `flybrain-worker-dispatch-every-five-minutes` is active with schedule `*/5 * * * *`.
 2. pg_cron recorded successful runs at 09:55, 10:00, and 10:05 UTC. Corresponding pg_net dispatches returned HTTP 204 when no supported task was eligible. This confirms the scheduler-to-dispatch path runs independently of a conversational tool call.
 3. The checkpoint/idempotency qualification task completed a two-execution recovery test. The first worker saved phase 1 and stopped; after lease expiry, a later worker resumed from that checkpoint. Independent ledger inspection found phase 2, a successful execution, and exactly one side-effect row for the idempotency key. The task is VERIFIED.
-4. A separate full-continuity qualification task is now READY and has a deterministic two-phase handler registered on staging. Its first execution is designed to stop after writing a checkpoint; the next eligible scheduled dispatch should recover the expired lease and finish phase 2. The test is not yet complete.
+4. The full-continuity qualification task completed its two-phase scheduled recovery test and is VERIFIED. The first execution saved phase 1 and stopped; after its 30-second lease expired, Supabase Cron automatically dispatched a second execution, which resumed from phase 1 and saved phase 2. The second dispatch was not initiated by a ChatGPT tool call. The ChatGPT conversation itself was not closed, so a literal closed-session test remains a separate follow-up.
 5. The latest Vercel preview for the staging branch is READY at commit `420d2b6`. Production was not modified.
 
 ## Provider inventory and constraints
