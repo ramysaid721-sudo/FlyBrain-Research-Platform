@@ -83,3 +83,11 @@ def test_rejects_unexpected_or_paid_model_route_response(bridge_environment):
     with patch("flybrain_os.openrouter_client.urlopen", return_value=FakeResponse(payload)):
         with pytest.raises(OpenRouterBridgeError):
             generate_public_project_answer("Public question", "Public context")
+
+
+def test_rejects_served_model_without_free_suffix(bridge_environment):
+    payload = success_payload()
+    payload["served_model"] = "vendor/paid-model"
+    with patch("flybrain_os.openrouter_client.urlopen", return_value=FakeResponse(payload)):
+        with pytest.raises(OpenRouterBridgeError):
+            generate_public_project_answer("Public question", "Public context")
