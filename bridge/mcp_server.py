@@ -161,7 +161,7 @@ class FlyBrainMCP:
                          "objective": {"type": "string", "minLength": 1, "maxLength": 4000},
                          "capability_id": {"type": "string", "enum": ["flybrain.project_context", "web.public_search", "web.public_fetch"]},
                          "data_classification": {"type": "string", "enum": ["public", "internal", "confidential"], "default": "public"},
-                         "allow_network": {"type": "boolean", "default": false},
+                         "allow_network": {"type": "boolean", "default": False},
                          "allowed_providers": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 8},
                          "arguments": {"type": "object", "properties": {
                              "query": {"type": "string", "maxLength": 1500},
