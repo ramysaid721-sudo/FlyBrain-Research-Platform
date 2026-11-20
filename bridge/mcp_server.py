@@ -9,6 +9,7 @@ from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, as
 from .capability_mesh import TaskContractError, capability_registry, build_task_contract, plan_task_route, execute_read_only_capability
 from .service_emulation_governance import evaluate_component_review
 from .service_emulation_planner import plan_service_emulation
+from .koofr_webdav_adapter import (KoofrStorageError, koofr_webdav_status, koofr_webdav_read, koofr_webdav_write)
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -44,7 +45,7 @@ class FlyBrainMCP:
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route", "evaluate_component_review", "plan_service_emulation"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route", "evaluate_component_review", "plan_service_emulation", "koofr_webdav_status", "koofr_webdav_read", "koofr_webdav_write"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
@@ -183,6 +184,24 @@ class FlyBrainMCP:
                          "request": {"type": "object", "description": "Requirements and candidate evidence for deterministic planning"}},
                          "required": ["request"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "koofr_webdav_status", "title": "Koofr WebDAV connection status",
+                     "description": "Report whether Koofr WebDAV credentials are configured and whether writes are enabled. Never returns credentials or contacts Koofr.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "koofr_webdav_read", "title": "Read an object from Koofr",
+                     "description": "Read one object from the fixed Koofr WebDAV endpoint. Requires configured application-specific credentials. Returns base64 content and metadata; no writes are performed.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "object_key": {"type": "string", "minLength": 1, "maxLength": 1024}},
+                         "required": ["object_key"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
+                    {"name": "koofr_webdav_write", "title": "Write an object to Koofr",
+                     "description": "Upload one object only when server-side FLYBRAIN_KOOFR_WEBDAV_ALLOW_WRITE=true and this call explicitly sets confirm_write=true. Uses the fixed Koofr HTTPS endpoint, enforces a 1 MB limit, and never deletes or overwrites without this explicit call.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "object_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+                         "content_base64": {"type": "string", "maxLength": 1333344},
+                         "confirm_write": {"type": "boolean"}},
+                         "required": ["object_key", "content_base64", "confirm_write"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": False, "openWorldHint": True}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -256,6 +275,26 @@ class FlyBrainMCP:
                     except (ValueError, TypeError) as exc:
                         raise ValueError(str(exc)) from exc
                     return self.send(start, "200 OK", self._tool_result(mid, decision, decision.get("decision") == "blocked"))
+                if name == "koofr_webdav_status":
+                    if args:
+                        raise ValueError("koofr_webdav_status accepts no arguments")
+                    return self.send(start, "200 OK", self._tool_result(mid, koofr_webdav_status()))
+                if name == "koofr_webdav_read":
+                    if set(args) != {"object_key"}:
+                        raise ValueError("koofr_webdav_read requires only object_key")
+                    try:
+                        data = koofr_webdav_read(args["object_key"])
+                    except (ValueError, KoofrStorageError) as exc:
+                        return self.send(start, "200 OK", self._tool_result(mid, {"status": "error", "error": str(exc)}, True))
+                    return self.send(start, "200 OK", self._tool_result(mid, data))
+                if name == "koofr_webdav_write":
+                    if set(args) != {"object_key", "content_base64", "confirm_write"}:
+                        raise ValueError("koofr_webdav_write requires object_key, content_base64, and confirm_write")
+                    try:
+                        data = koofr_webdav_write(args["object_key"], args["content_base64"], args["confirm_write"])
+                    except (ValueError, KoofrStorageError) as exc:
+                        return self.send(start, "200 OK", self._tool_result(mid, {"status": "error", "error": str(exc)}, True))
+                    return self.send(start, "200 OK", self._tool_result(mid, data))
                 if name == "plan_service_emulation":
                     if set(args) != {"request"}:
                         raise ValueError("plan_service_emulation requires only request")
