@@ -137,30 +137,14 @@ class FlyBrainChatApp:
                 providers = model_hub.discover_providers()
                 caller = None
                 if providers:
-                    attestation = data.get("public_data_attestation")
-                    if not isinstance(attestation, dict):
-                        return self._response(start_response, "400 Bad Request", {
-                            "error": "public_data_attestation_required"
-                        })
-                    data_class = attestation.get("classification")
-                    contains_secrets = attestation.get("contains_secrets")
-                    contains_personal_data = attestation.get("contains_personal_data")
-                    if (
-                        data_class != "public"
-                        or type(contains_secrets) is not bool
-                        or contains_secrets is not False
-                        or type(contains_personal_data) is not bool
-                        or contains_personal_data is not False
-                    ):
-                        return self._response(start_response, "400 Bad Request", {
-                            "error": "public_data_attestation_rejected"
-                        })
-                    caller = partial(
-                        _guarded_post_chat,
-                        data_class=data_class,
-                        contains_secrets=contains_secrets,
-                        contains_personal_data=contains_personal_data,
-                    )
+                    # A client-supplied attestation is not trusted provenance.
+                    # Until a server-side classifier/provenance gate is wired
+                    # into this path, fail closed and do not invoke any provider.
+                    return self._response(start_response, "503 Service Unavailable", {
+                        "error": "external_inference_disabled",
+                        "reason": "trusted_server_side_data_classification_unavailable",
+                        "external_data_transfer": False,
+                    })
                 result = self._consultation.consult(
                     enriched_question,
                     timeout=int(timeout),
