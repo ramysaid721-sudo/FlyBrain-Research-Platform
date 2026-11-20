@@ -88,12 +88,14 @@ def test_write_sends_only_to_fixed_koofr_endpoint_and_reports_metadata(monkeypat
         captured["url"] = request.full_url
         captured["method"] = request.get_method()
         captured["body"] = request.data
+        captured["if_none_match"] = request.get_header("If-none-match")
         return FakeResponse(status=201)
     monkeypatch.setattr(adapter, "_open", fake_open)
     result = adapter.koofr_webdav_write("FlyBrain/test.txt", base64.b64encode(b"hello").decode(), True)
     assert captured["url"] == "https://app.koofr.net/dav/Koofr/FlyBrain/test.txt"
     assert captured["method"] == "PUT"
     assert captured["body"] == b"hello"
+    assert captured["if_none_match"] == "*"
     assert result["size_bytes"] == 5
 
 
@@ -135,3 +137,12 @@ def test_probe_rejects_authentication_failure(monkeypatch):
     monkeypatch.setattr(adapter, "_open", fake_open)
     with pytest.raises(adapter.KoofrStorageError, match="application-specific"):
         adapter.koofr_webdav_probe()
+
+
+def test_write_never_overwrites_existing_object(monkeypatch):
+    configure(monkeypatch, write=True)
+    def fake_open(request):
+        raise urllib.error.HTTPError(request.full_url, 412, "precondition failed", {}, None)
+    monkeypatch.setattr(adapter, "_open", fake_open)
+    with pytest.raises(adapter.KoofrStorageError, match="no overwrite was performed"):
+        adapter.koofr_webdav_write("existing.txt", base64.b64encode(b"new").decode(), True)
