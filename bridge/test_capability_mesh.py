@@ -128,3 +128,56 @@ def test_local_project_context_rejects_network_permission():
     contract = build_task_contract("Retrieve project context", "public", ["local"], True, 0.0)
     with pytest.raises(TaskContractError):
         execute_read_only_capability(contract, "flybrain.project_context", {"limit": 2})
+
+
+def test_browserless_adapter_fails_closed_without_explicit_usage_opt_in(monkeypatch):
+    from flybrain_os import browser_use_adapter
+    monkeypatch.delenv("BROWSERLESS_TOKEN", raising=False)
+    monkeypatch.setenv("BROWSERLESS_ALLOW_USAGE", "true")
+    with pytest.raises(browser_use_adapter.BrowserUseNotConfigured):
+        browser_use_adapter.run_browserless_fetch("https://example.com")
+
+
+def test_browserless_adapter_requires_explicit_usage_opt_in(monkeypatch):
+    from flybrain_os import browser_use_adapter
+    monkeypatch.setenv("BROWSERLESS_TOKEN", "test-token")
+    monkeypatch.delenv("BROWSERLESS_ALLOW_USAGE", raising=False)
+    assert browser_use_adapter.browserless_status()["configured"] is False
+
+
+def test_browserless_adapter_uses_allowlisted_host_and_never_returns_token(monkeypatch):
+    import json
+    from urllib.parse import parse_qs, urlparse
+    from flybrain_os import browser_use_adapter
+
+    class FakeResponse:
+        status = 200
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, size=-1):
+            return b"<html><head><title>Rendered</title></head><body><h1>Browserless page</h1></body></html>"
+
+    captured = {}
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setenv("BROWSERLESS_TOKEN", "secret-test-token")
+    monkeypatch.setenv("BROWSERLESS_ALLOW_USAGE", "true")
+    monkeypatch.setenv("BROWSERLESS_CONTENT_ENDPOINT", "https://production-sfo.browserless.io/content")
+    monkeypatch.setattr(browser_use_adapter, "_validate_url", lambda value: value)
+    monkeypatch.setattr(browser_use_adapter, "urlopen", fake_urlopen)
+
+    result = browser_use_adapter.run_browserless_fetch("https://example.com/path", include_links=False)
+    query = parse_qs(urlparse(captured["url"]).query)
+    assert query["token"] == ["secret-test-token"]
+    assert query["allowedDomains"] == ["example.com"]
+    assert captured["body"]["url"] == "https://example.com/path"
+    assert captured["timeout"] == 20
+    assert result["status"] == "completed"
+    assert result["provider"] == "browserless"
+    assert "Browserless page" in result["content"]
+    assert "secret-test-token" not in json.dumps(result)
