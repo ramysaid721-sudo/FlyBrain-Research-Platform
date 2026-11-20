@@ -7,6 +7,7 @@ clearance. All candidate evidence is treated as caller-supplied input.
 from __future__ import annotations
 
 from typing import Any
+import math
 
 REQUIRED_CANDIDATE_FIELDS = {
     "candidate_id", "capability", "implementation_type", "review_status",
@@ -48,13 +49,15 @@ def _candidate_blockers(candidate: dict[str, Any], requirements: dict[str, Any])
         return ["invalid cost_state"]
     if candidate["cost_state"] == "unknown":
         return ["cost is unknown"]
+    estimate = candidate["estimated_monthly_cost"]
+    if isinstance(estimate, bool) or not isinstance(estimate, (int, float)) or not math.isfinite(estimate) or estimate < 0:
+        return ["estimated_monthly_cost must be a finite non-negative number"]
+    if candidate["cost_state"] == "known_zero" and estimate != 0:
+        return ["known_zero candidate must have estimated_monthly_cost equal to zero"]
+    if candidate["cost_state"] == "known_nonzero" and estimate <= 0:
+        return ["known_nonzero candidate must have a positive cost estimate"]
     if candidate["cost_state"] == "known_nonzero" and not requirements.get("allow_paid", False):
         return ["paid candidate is not permitted by this request"]
-    if candidate["cost_state"] == "known_zero":
-        if candidate["estimated_monthly_cost"] != 0:
-            return ["known_zero candidate must have estimated_monthly_cost equal to zero"]
-    elif not isinstance(candidate["estimated_monthly_cost"], (int, float)) or candidate["estimated_monthly_cost"] < 0:
-        return ["known_nonzero candidate requires a non-negative cost estimate"]
     if not isinstance(candidate["supports_requirements"], list) or not all(
         _nonempty(item) for item in candidate["supports_requirements"]
     ):
@@ -115,9 +118,11 @@ def plan_service_emulation(request: dict[str, Any]) -> dict[str, Any]:
         # Transparent score: feature coverage is a tie-breaker, not a substitute
         # for approval, cost, security, data-classification, or operational gates.
         coverage = len(set(request["required_features"]) & set(candidate["supports_requirements"]))
+        breadth = len(set(candidate["supports_requirements"]))
         eligible.append({
             "candidate_id": candidate["candidate_id"],
             "score": coverage,
+            "supported_feature_count": breadth,
             "cost_state": candidate["cost_state"],
             "estimated_monthly_cost": candidate["estimated_monthly_cost"],
             "implementation_type": candidate["implementation_type"],
@@ -126,6 +131,7 @@ def plan_service_emulation(request: dict[str, Any]) -> dict[str, Any]:
         item["cost_state"] != "known_zero",
         item["estimated_monthly_cost"],
         -item["score"],
+        -item["supported_feature_count"],
         item["candidate_id"],
     ))
     selected = eligible[0] if eligible else None
