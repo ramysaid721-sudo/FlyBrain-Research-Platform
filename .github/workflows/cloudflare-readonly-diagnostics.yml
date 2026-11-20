@@ -1,0 +1,103 @@
+name: Cloudflare read-only diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      account_id:
+        description: Cloudflare Account ID (not a secret)
+        required: true
+        type: string
+      worker_name:
+        description: Worker script name
+        required: true
+        default: flybrain-research-platform
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-readonly-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Inspect Worker configuration (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate inputs and token
+        env:
+          CF_ACCOUNT_ID: ${{ inputs.account_id }}
+          CF_WORKER_NAME: ${{ inputs.worker_name }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$CF_ACCOUNT_ID" =~ ^[a-fA-F0-9]{32}$ ]] || { echo "Invalid Cloudflare Account ID format"; exit 2; }
+          [[ "$CF_WORKER_NAME" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo "Invalid Worker name"; exit 2; }
+          [[ -n "$CF_API_TOKEN" ]] || { echo "Missing repository secret: CLOUDFLARE_API_TOKEN"; exit 2; }
+      - name: Read Worker settings and deployment metadata
+        env:
+          CF_ACCOUNT_ID: ${{ inputs.account_id }}
+          CF_WORKER_NAME: ${{ inputs.worker_name }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          base="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${CF_WORKER_NAME}"
+          settings_code=$(curl --silent --show-error --output /tmp/settings.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${CF_API_TOKEN}" \
+            --header "Accept: application/json" "${base}/settings")
+          deployments_code=$(curl --silent --show-error --output /tmp/deployments.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${CF_API_TOKEN}" \
+            --header "Accept: application/json" "${base}/deployments")
+          {
+            echo "# Cloudflare Worker read-only diagnostic"
+            echo
+            echo "- Worker: ${CF_WORKER_NAME}"
+            echo "- Account ID: ${CF_ACCOUNT_ID}"
+            echo "- Checked at (UTC): $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "- Settings API HTTP: ${settings_code}"
+            echo "- Deployments API HTTP: ${deployments_code}"
+            echo
+            echo "## Worker settings (sensitive values excluded)"
+            if [[ "${settings_code}" == "200" ]] && jq -e '.success == true' /tmp/settings.json >/dev/null; then
+              jq -r '
+                (.result.bindings // []) |
+                if length == 0 then "No bindings returned."
+                else
+                  .[] | "- name: " + (.name // "unnamed") + " | type: " + (.type // "unknown")
+                end
+              ' /tmp/settings.json
+              echo
+              echo "### Settings metadata"
+              jq -r '.result | {
+                usage_model: (.usage_model // null),
+                compatibility_date: (.compatibility_date // null),
+                compatibility_flags: (.compatibility_flags // []),
+                logpush: (.logpush // null)
+              }' /tmp/settings.json
+            else
+              jq '{success, errors, messages}' /tmp/settings.json
+            fi
+            echo
+            echo "## Deployment metadata"
+            if [[ "${deployments_code}" == "200" ]] && jq -e '.success == true' /tmp/deployments.json >/dev/null; then
+              jq -r '
+                (.result // [])[:10][] |
+                "- id: " + (.id // "unknown") + " | created_on: " + (.created_on // "unknown") + " | source: " + (.source // "unknown") + " | strategy: " + (.strategy // "unknown")
+              ' /tmp/deployments.json
+            else
+              jq '{success, errors, messages}' /tmp/deployments.json
+            fi
+          } > report/cloudflare-worker-diagnostic.md
+          cat report/cloudflare-worker-diagnostic.md
+          # Do not upload raw API responses: they may contain configuration values.
+      - name: Upload sanitized report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-worker-diagnostic
+          path: report/cloudflare-worker-diagnostic.md
+          if-no-files-found: warn
+          retention-days: 7
