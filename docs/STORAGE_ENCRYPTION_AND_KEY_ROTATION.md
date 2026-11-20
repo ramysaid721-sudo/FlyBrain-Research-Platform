@@ -103,8 +103,8 @@ A security model or agent may review only this public specification and syntheti
 ## Additional envelope-validation hardening (2026-11-20)
 
 - `decrypt_bytes` now rejects unsupported envelope format/algorithm identifiers and missing key metadata before calling the key wrapper.
-- `rewrap_data_key` now validates envelope type/format and source/target key metadata, validates the unwrapped DEK, rejects empty wrapped-key responses, and normalizes unexpected KMS adapter failures to `StorageEncryptionError`.
-- Synthetic tests now include malformed nonce and wrapped-DEK data, altered scope metadata, invalid KMS DEK/wrap responses, invalid target key metadata, KMS unwrap/wrap exceptions, unsupported envelope identifiers, and non-envelope input.
+- `rewrap_data_key` now validates envelope type/format, source/target key metadata, the 12-byte AES-GCM nonce, and the minimum 16-byte ciphertext/tag structure before calling the KMS adapter. It also validates the unwrapped DEK, rejects empty wrapped-key responses, and normalizes unexpected KMS adapter failures to `StorageEncryptionError`.
+- The 22-method synthetic test suite includes malformed nonce/ciphertext handling during rewrap, malformed wrapped-DEK data, altered scope metadata, invalid KMS DEK/wrap responses, invalid target key metadata, KMS unwrap/wrap exceptions, unsupported envelope identifiers, and non-envelope input.
 - These are code and test additions only. Hosted CI has not yet supplied a successful test result; no production KMS, persistent storage, or file-encryption integration is configured.
 
 
@@ -113,4 +113,5 @@ A security model or agent may review only this public specification and syntheti
 - The latest pull-request-triggered workflow run observed after envelope hardening was `44729887765`.
 - Both Python matrix jobs completed with `failure`, `runner_id=0`, an empty `runner_name`, and empty step lists; log downloads returned `BlobNotFound`. This confirms no runner was assigned and no test step ran.
 - Therefore the hosted run still provides no evidence that Python setup, dependency installation, compilation, or unit tests actually started. It must not be reported as a code-test failure or a passing CI run.
-- The current storage-encryption test module contains 20 test methods. No new local execution result is claimed for this expanded set.
+- The current storage-encryption test module contains 22 test methods. Both source and test files were fetched from this branch and their local Git blob SHA-1 values matched the GitHub-reported blob SHAs exactly. On Python 3.13.5 with `cryptography==46.0.4`, all 22 tests passed locally and `compileall` passed. Python 3.12 was unavailable in the local environment, so 3.12 compatibility remains unverified.
+- The latest pull-request workflow run after these changes is `44731179575` (run 57). Both Python matrix jobs again completed with `failure`, `runner_id=0`, empty `runner_name`, and empty `steps`; this is runner-allocation failure, not a test failure. No hosted CI pass is claimed.
