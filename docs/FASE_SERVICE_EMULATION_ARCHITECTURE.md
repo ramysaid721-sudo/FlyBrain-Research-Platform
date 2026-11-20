@@ -133,4 +133,16 @@ The evaluator checks recorded provenance, third-party source and licence identif
 
 **Verification boundary:** files and MCP registration have been committed and re-fetched from staging. GitHub Actions execution is not yet verified; the repository's recent Actions failures were associated with account spending-limit blocks and unavailable job logs. Do not treat the tests as passed until a runner executes them. No production deployment or merge is authorized.
 
-**Remaining implementation boundary:** automated service discovery and candidate-source verification, a persistent registry, provider-neutral adapters, USCL storage adapters, multi-cloud replication, and restore verification remain unimplemented. The current planner accepts candidate evidence as input; it does not maintain or independently verify a catalogue. The latest planner hardening validates finite cost estimates and uses supported-feature breadth only as a tie-breaker after all required gates pass. USCL remains design-only until a real backend adapter passes its acceptance tests. Existing capability-mesh routes do not constitute a general service factory or production-ready multi-cloud platform.
+### Initial Koofr WebDAV adapter
+
+A first bounded storage adapter is now present:
+- `bridge/koofr_webdav_adapter.py` implements status, a read-only PROPFIND connection probe, bounded GET, and opt-in PUT against Koofr's documented fixed HTTPS endpoint.
+- `bridge/mcp_server.py` exposes authenticated tools for status, probe, read, and write.
+- `api/index.py` explicitly includes the new governance, planner, and Koofr modules in the Vercel cold-start overlay.
+- `bridge/test_koofr_webdav_adapter.py` and MCP tests cover credentials redaction, path traversal rejection, read/write gates, redirect rejection, and authenticated tool routing.
+
+Writes require both `FLYBRAIN_KOOFR_WEBDAV_ALLOW_WRITE=true` on the server and `confirm_write=true` on the individual call. Object size is capped at 1 MB. No delete, move, share, or synchronization operation is implemented. The adapter is not configured with credentials and has not yet completed a live Koofr connection or file round-trip.
+
+Official connection instructions: https://app.koofr.net/help/webdav
+
+**Remaining implementation boundary:** automated service discovery and candidate-source verification, a persistent registry, full USCL interface integration, multi-cloud replication, and restore verification remain unimplemented. The current planner accepts candidate evidence as input; it does not maintain or independently verify a catalogue. The planner validates finite cost estimates and uses supported-feature breadth only as a tie-breaker after all required gates pass. USCL remains design-only until a real backend adapter passes its acceptance tests. Existing capability-mesh routes do not constitute a general service factory or production-ready multi-cloud platform.
