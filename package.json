@@ -6,6 +6,6 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@vercel/sandbox": "4.0.0"
+    "@vercel/sandbox": "3.6.1"
   }
 }
