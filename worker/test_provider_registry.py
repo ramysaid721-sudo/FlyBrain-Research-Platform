@@ -156,5 +156,48 @@ class ProviderRegistryTests(unittest.TestCase):
             offer(max_parallelism=-1)
 
 
+    def test_boolean_fields_require_real_booleans(self):
+        for field in ("enabled", "free_capacity_confirmed", "healthy", "circuit_open", "network_access"):
+            with self.subTest(field=field):
+                with self.assertRaises(ValueError):
+                    offer(**{field: 1})
+
+        with self.assertRaises(ValueError):
+            TaskRequirements(runtime="python3.12", capability="pytest", network_required=1)
+
+    def test_integer_limits_reject_booleans_zero_and_inconsistent_counts(self):
+        for changes in (
+            {"max_parallelism": 0},
+            {"max_parallelism": True},
+            {"active_jobs": True},
+            {"max_runtime_seconds": 0},
+            {"active_jobs": 3, "max_parallelism": 2},
+            {"priority": -1},
+        ):
+            with self.subTest(changes=changes):
+                with self.assertRaises(ValueError):
+                    offer(**changes)
+
+    def test_malformed_cost_types_and_capability_sets_are_rejected(self):
+        for cost in ("0", True, None):
+            with self.subTest(cost=cost):
+                with self.assertRaises(ValueError):
+                    offer(estimated_cost_usd=cost)
+        for capabilities in ({"pytest"}, frozenset({"", "cpu"}), ["pytest"]):
+            with self.subTest(capabilities=capabilities):
+                with self.assertRaises(ValueError):
+                    offer(capabilities=capabilities)
+
+    def test_unsupported_capability_and_runtime_limit_are_rejected(self):
+        result = select_provider(self.requirements, [offer(capabilities=frozenset({"cpu"}))])
+        self.assertIn(("alpha", "capability_unsupported"), result.rejected)
+        result = select_provider(self.requirements, [offer(max_runtime_seconds=120)])
+        self.assertIn(("alpha", "runtime_limit_too_short"), result.rejected)
+
+    def test_non_provider_offer_is_rejected_as_invalid_input(self):
+        with self.assertRaises(TypeError):
+            select_provider(self.requirements, [object()])
+
+
 if __name__ == "__main__":
     unittest.main()
