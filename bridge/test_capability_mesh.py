@@ -37,12 +37,12 @@ def test_paid_budget_is_rejected():
         build_task_contract("Task", max_cost_usd=0.01)
 
 
-def test_restricted_data_never_routes_to_network():
+def test_restricted_data_fails_closed_until_a_hardened_local_capability_exists():
     contract = build_task_contract("Handle restricted records", "restricted",
                                    ["local", "http_research"], True, 0.0)
     plan = plan_task_route(contract)
-    assert plan["status"] == "route_planned"
-    assert all(route["provider"] == "local" for route in plan["routes"])
+    assert plan["status"] == "no_eligible_route"
+    assert plan["routes"] == []
 
 
 def test_side_effects_cannot_be_enabled_by_tampering():
