@@ -47,3 +47,14 @@ test("browser navigation rejects a hostname outside the signed session allowlist
   );
   assert.equal(browserTouched, false);
 });
+
+
+test("oversized allowlists are rejected before issuing a session token", async () => {
+  const longDomains = Array.from({ length: 14 }, (_, index) =>
+    "a".repeat(60) + String(index) + "." + "b".repeat(61) + "." + "c".repeat(61) + ".com"
+  );
+  await assert.rejects(
+    () => signSessionToken(env, "browser-session-large", longDomains),
+    /Combined allowedDomains length/
+  );
+});
