@@ -261,3 +261,43 @@ def test_fase_service_emulation_planner_is_authenticated_and_read_only(tmp_path)
     assert result["selected_candidate"]["candidate_id"] == "native.search.v1"
     assert result["execution_performed"] is False
     assert result["activation_performed"] is False
+
+
+def test_koofr_webdav_tools_are_authenticated_and_writes_are_explicit(tmp_path, monkeypatch):
+    token = "z" * 40
+    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_status", lambda: {
+        "provider": "koofr_webdav", "configured": False, "write_enabled": False,
+        "ready": False, "credentials_exposed": False
+    })
+    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_read", lambda key: {
+        "status": "completed", "object_key": key, "content_base64": "aGVsbG8="
+    })
+    captured = {}
+    def fake_write(key, content, confirm):
+        captured.update({"key": key, "content": content, "confirm": confirm})
+        return {"status": "completed", "object_key": key, "size_bytes": 5}
+    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_write", fake_write)
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+
+    status_request = {"jsonrpc": "2.0", "id": 50, "method": "tools/call",
+                      "params": {"name": "koofr_webdav_status", "arguments": {}}}
+    response, _ = call(app, status_request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    response, body = call(app, status_request, token)
+    assert response["status"] == "200 OK"
+    assert body["result"]["structuredContent"]["credentials_exposed"] is False
+
+    read_request = {"jsonrpc": "2.0", "id": 51, "method": "tools/call",
+                    "params": {"name": "koofr_webdav_read", "arguments": {"object_key": "a.txt"}}}
+    response, body = call(app, read_request, token)
+    assert body["result"]["structuredContent"]["content_base64"] == "aGVsbG8="
+
+    write_request = {"jsonrpc": "2.0", "id": 52, "method": "tools/call",
+                     "params": {"name": "koofr_webdav_write", "arguments": {
+                         "object_key": "a.txt", "content_base64": "aGVsbG8=", "confirm_write": True}}}
+    response, body = call(app, write_request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    response, body = call(app, write_request, token)
+    assert response["status"] == "200 OK"
+    assert captured == {"key": "a.txt", "content": "aGVsbG8=", "confirm": True}
+    assert body["result"]["structuredContent"]["size_bytes"] == 5
