@@ -1,25 +1,36 @@
 """Deterministic, checkpointed worker for the FlyBrain mission queue.
 
-This worker intentionally does not invoke an LLM, install packages, or mutate
-GitHub. It handles the initial GitHub Actions runner diagnostic as read-only
-work and leaves all task verification to the supervisor.
+The worker only executes registered, bounded handlers. It does not invoke an
+LLM, alter production, or write to GitHub. Completion always enters the
+supervisor-verification state.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
+import subprocess
 import sys
+from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-RUNNER_FAILURE_TASK_ID = "d3000000-0000-4000-8000-000000000001"
+TASK_RUNNER_DIAGNOSIS = "d3000000-0000-4000-8000-000000000001"
+TASK_CI_QUALIFICATION = "d3000000-0000-4000-8000-000000000002"
 GITHUB_REPO = "ramysaid721-sudo/FlyBrain-Research-Platform"
 KNOWN_FAILED_RUN_ID = 44707066740
 TEST_REPORT_URL = (
     "https://github.com/ramysaid721-sudo/FlyBrain-Research-Platform/"
     "blob/flybrain-browser-worker-staging/reports/VERCEL_SANDBOX_TEST_RUN_2026-11-20.md"
 )
+TEST_PATHS = [
+    "components/FlyBrain-NOS/tests/test_capability_mesh.py",
+    "components/FlyBrain-NOS/tests/test_mcp_server.py",
+    "components/FlyBrain-NOS/tests/test_service_emulation_governance.py",
+    "components/FlyBrain-NOS/tests/test_service_emulation_planner.py",
+    "components/FlyBrain-NOS/tests/test_koofr_webdav_adapter.py",
+]
 
 
 class WorkerError(RuntimeError):
@@ -40,10 +51,7 @@ def control(action: str, **payload):
     request = Request(
         endpoint,
         data=body,
-        headers={
-            "Content-Type": "application/json",
-            "x-flybrain-token": token,
-        },
+        headers={"Content-Type": "application/json", "x-flybrain-token": token},
         method="POST",
     )
     try:
@@ -59,9 +67,8 @@ def control(action: str, **payload):
 
 
 def github_get(path: str):
-    url = "https://api.github.com" + path
     request = Request(
-        url,
+        "https://api.github.com" + path,
         headers={
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
@@ -77,7 +84,27 @@ def github_get(path: str):
         raise WorkerError(f"GitHub API unavailable: {type(exc).__name__}") from None
 
 
-def diagnose_runner_failure(task: dict, execution_id: str, lease_token: str) -> dict:
+def run_command(args: list[str], cwd: Path, timeout: int = 30) -> str:
+    try:
+        result = subprocess.run(
+            args,
+            cwd=str(cwd),
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise WorkerError(f"Command timed out after {timeout}s: {args[0]}") from None
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode != 0:
+        raise WorkerError(
+            f"Command failed ({result.returncode}): {args[0]}: {output[-700:]}"
+        )
+    return output
+
+
+def diagnose_runner_failure() -> dict:
     run = github_get(f"/repos/{GITHUB_REPO}/actions/runs/{KNOWN_FAILED_RUN_ID}")
     jobs_payload = github_get(
         f"/repos/{GITHUB_REPO}/actions/runs/{KNOWN_FAILED_RUN_ID}/jobs?per_page=100"
@@ -87,6 +114,7 @@ def diagnose_runner_failure(task: dict, execution_id: str, lease_token: str) -> 
     for job in jobs:
         steps = job.get("steps") or []
         summaries.append({
+            "id": job.get("id"),
             "name": job.get("name"),
             "status": job.get("status"),
             "conclusion": job.get("conclusion"),
@@ -106,13 +134,12 @@ def diagnose_runner_failure(task: dict, execution_id: str, lease_token: str) -> 
         and item["step_count"] == 0
         for item in summaries
     )
-    classification = (
-        "runner_provisioning_failure_before_first_step"
-        if runner_unallocated
-        else "runner_metadata_requires_supervisor_review"
-    )
-    evidence = {
-        "classification": classification,
+    return {
+        "classification": (
+            "runner_provisioning_failure_before_first_step"
+            if runner_unallocated
+            else "runner_metadata_requires_supervisor_review"
+        ),
         "root_cause_boundary": (
             "The job failed at GitHub-hosted runner allocation before any workflow "
             "step executed. The exposed run/job metadata does not identify the "
@@ -140,26 +167,76 @@ def diagnose_runner_failure(task: dict, execution_id: str, lease_token: str) -> 
             "python_runtime": "3.14.4",
             "python_3_12_compatibility": "pending",
         },
-        "task_id": task.get("id"),
-        "execution_id": execution_id,
     }
-    checkpoint = control(
-        "checkpoint",
-        execution_id=execution_id,
-        lease_token=lease_token,
-        checkpoint_key="github-runner-diagnostic",
-        payload=evidence,
+
+
+def qualify_ci_runner() -> dict:
+    repo_root = Path(__file__).resolve().parents[1]
+    release_zip = repo_root / "FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip"
+    release_dir = repo_root / ".release"
+    if not release_zip.is_file():
+        raise WorkerError("FlyBrain v0.14.0 release ZIP is missing from the worker checkout")
+
+    shutil.rmtree(release_dir, ignore_errors=True)
+    run_command(
+        [sys.executable, "-m", "zipfile", "-e", str(release_zip), str(release_dir)],
+        cwd=repo_root,
+        timeout=20,
     )
-    if not checkpoint:
-        raise WorkerError("Diagnostic checkpoint was not persisted")
-    completed = control(
-        "complete",
-        execution_id=execution_id,
-        lease_token=lease_token,
+    package_root = release_dir / "FlyBrain_Research_Platform_v0.14.0"
+    run_command(
+        [sys.executable, "scripts/apply_chat_bridge.py", "--source", str(package_root)],
+        cwd=repo_root,
+        timeout=20,
     )
-    if completed is not True:
-        raise WorkerError("Task completion was rejected by the control plane")
-    return evidence
+    run_command(
+        [sys.executable, "-m", "compileall", "-q", "bridge", "scripts"],
+        cwd=repo_root,
+        timeout=20,
+    )
+
+    run_command(
+        [sys.executable, "-m", "pip", "install", "--quiet", "pytest"],
+        cwd=repo_root,
+        timeout=30,
+    )
+    run_command(
+        [sys.executable, "-m", "pip", "install", "--quiet", "-e",
+         str(package_root / "components" / "FlyBrain-NOS")],
+        cwd=repo_root,
+        timeout=30,
+    )
+    test_args = [
+        sys.executable, "-m", "pytest", "-q",
+        *[str(Path("components/FlyBrain-NOS/tests") / name.split("/")[-1])
+          for name in TEST_PATHS],
+    ]
+    test_output = run_command(test_args, cwd=package_root, timeout=35)
+    match = re.search(r"(\d+) passed(?:, (\d+) failed)?", test_output)
+    if not match:
+        raise WorkerError(f"Pytest did not report a passing summary: {test_output[-700:]}")
+    passed = int(match.group(1))
+    failed = int(match.group(2) or 0)
+    if passed != 74 or failed != 0:
+        raise WorkerError(f"Expected 74 passing tests and zero failures; got {passed}/{failed}")
+
+    commit = run_command(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        timeout=10,
+    ).strip()
+    return {
+        "runner": "Vercel Sandbox Hobby",
+        "qualification": "passed",
+        "python_version": sys.version.split()[0],
+        "compileall": "passed",
+        "tests_passed": passed,
+        "tests_failed": failed,
+        "test_output": test_output[-500:],
+        "tested_commit": commit,
+        "report_url": TEST_REPORT_URL,
+        "github_actions_runner_status": "upstream allocation failure remains classified separately",
+    }
 
 
 def main() -> int:
@@ -169,21 +246,45 @@ def main() -> int:
         task = json.loads(_env("FLYBRAIN_TASK_JSON"))
         if not isinstance(task, dict):
             raise WorkerError("Claimed task payload is invalid")
-        if task.get("id") != RUNNER_FAILURE_TASK_ID:
-            raise WorkerError(f"No deterministic handler registered for task {task.get('id')}")
+        task_id = task.get("id")
         control(
             "heartbeat",
             execution_id=execution_id,
             lease_token=lease_token,
             lease_seconds=300,
         )
-        evidence = diagnose_runner_failure(task, execution_id, lease_token)
+        if task_id == TASK_RUNNER_DIAGNOSIS:
+            checkpoint_key = "github-runner-diagnostic"
+            evidence = diagnose_runner_failure()
+        elif task_id == TASK_CI_QUALIFICATION:
+            checkpoint_key = "external-runner-ci-qualification"
+            evidence = qualify_ci_runner()
+        else:
+            raise WorkerError(f"No deterministic handler registered for task {task_id}")
+
+        saved = control(
+            "checkpoint",
+            execution_id=execution_id,
+            lease_token=lease_token,
+            checkpoint_key=checkpoint_key,
+            payload=evidence,
+        )
+        if not saved:
+            raise WorkerError("Execution checkpoint was not persisted")
+        completed = control(
+            "complete",
+            execution_id=execution_id,
+            lease_token=lease_token,
+        )
+        if completed is not True:
+            raise WorkerError("Task completion was rejected by the control plane")
         print(json.dumps({
             "status": "awaiting_verification",
-            "task_id": task.get("id"),
-            "classification": evidence["classification"],
-            "runner_jobs": len(evidence["jobs"]),
-            "checkpoint": "github-runner-diagnostic",
+            "task_id": task_id,
+            "checkpoint": checkpoint_key,
+            "result": evidence.get("classification") or evidence.get("qualification"),
+            "tests_passed": evidence.get("tests_passed"),
+            "tests_failed": evidence.get("tests_failed"),
         }, separators=(",", ":")))
         return 0
     except Exception as exc:
