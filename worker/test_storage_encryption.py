@@ -75,15 +75,10 @@ class StorageEncryptionTests(unittest.TestCase):
     def test_wrong_kek_fails_closed(self):
         envelope = encrypt_bytes(b"fixture", **self.kwargs)
         with self.assertRaises(StorageEncryptionError):
-            decrypt_bytes(envelope, key_wrapper=self.kms,
-                          expected_object_id="artifact-001",
-                          expected_scope="project-001",
-                          expected_schema_version="v1") if False else self._wrong_kek(envelope)
+            self._wrong_kek(envelope)
 
     def _wrong_kek(self, envelope):
-        wrong = EncryptedEnvelope(
-            **{**envelope.__dict__, "kek_id": "wrong-kek"}
-        )
+        wrong = EncryptedEnvelope(**{**envelope.__dict__, "kek_id": "wrong-kek"})
         return decrypt_bytes(wrong, key_wrapper=self.kms,
                              expected_object_id="artifact-001",
                              expected_scope="project-001",
