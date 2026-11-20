@@ -69,7 +69,9 @@ A security model or agent may review only this public specification and syntheti
 
 ## Current status and limitations
 
-- This file is a specification only. No encryption adapter, KMS integration, key rotation job, or storage migration is activated by this document.
-- No external security-review agent endpoint has been verified or contacted.
+- A KMS-agnostic AES-256-GCM envelope-encryption adapter and synthetic unit tests now exist in `worker/storage_encryption.py` and `worker/test_storage_encryption.py` on the Staging prototype branch.
+- The adapter exposes a `KeyWrapper` protocol only. No real KMS/secret-manager implementation, key custody, persistent-storage integration, scheduled rotation job, or storage migration is configured.
+- The CI workflow now includes the new tests, but passing CI has not yet been independently verified.
+- No external security-review agent endpoint has been verified or contacted. Railway currently has no projects and its agent connector tunnels are unavailable; Vercel billing-charge visibility returned `costs_not_found`, and its named Staging sandbox is stopped. No paid or uncertain-cost compute has been started.
 - Existing provider-managed encryption, if any, does not prove application-layer encryption or FlyBrain-controlled key rotation.
 - The current project policy remains public data only for external models; no private data is eligible.
