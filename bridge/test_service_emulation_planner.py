@@ -89,3 +89,19 @@ def test_invalid_requests_are_rejected():
         plan_service_emulation({"capability": "search"})
     with pytest.raises(ValueError):
         plan_service_emulation(request([], allow_paid="yes"))
+
+
+def test_known_nonzero_cost_requires_positive_finite_estimate():
+    paid = candidate(cost_state="known_nonzero", estimated_monthly_cost=0)
+    result = plan_service_emulation(request([paid], allow_paid=True))
+    assert result["status"] == "no_eligible_candidate"
+    paid = candidate(cost_state="known_nonzero", estimated_monthly_cost=float("inf"))
+    result = plan_service_emulation(request([paid], allow_paid=True))
+    assert result["status"] == "no_eligible_candidate"
+
+
+def test_feature_breadth_is_only_a_tiebreaker_after_required_gates():
+    narrow = candidate(candidate_id="narrow", supports_requirements=["full_text"])
+    broad = candidate(candidate_id="broad", supports_requirements=["full_text", "filters", "facets"])
+    result = plan_service_emulation(request([narrow, broad]))
+    assert result["selected_candidate"]["candidate_id"] == "broad"
