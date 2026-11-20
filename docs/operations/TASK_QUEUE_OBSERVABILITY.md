@@ -184,3 +184,12 @@ A 502 with `status = failed_or_requeued` does not by itself mean the worker proc
 - The no-token worker POST returned HTTP 401; the associated temporary HTTP response row was removed after inspection.
 
 Cron success means the scheduled SQL command executed successfully; it does not alone prove that an actual task was completed. Pair Cron history with queue depth and task-ledger state.
+
+## 12. Saved Supabase Staging operations notebook
+
+A read-only Supabase notebook containing the queue-depth, task-state/retry, end-to-end latency, lease-health, event-telemetry, group-integrity/token-hash alignment, and Cron-schedule queries is available in the Staging project:
+
+- Notebook: [FlyBrain Staging Operations](https://supabase.com/dashboard/project/iudimypauqbkyvjuprgp/explorer/notebook/668c1c64-2cc3-4307-82a1-6ba9d0bcfdb0)
+- Notebook ID: `668c1c64-2cc3-4307-82a1-6ba9d0bcfdb0`
+- All seven query cells were executed successfully on 2026-11-20 UTC.
+- The notebook contains SELECT-only SQL and does not display task payloads, results, query text, or credentials.
