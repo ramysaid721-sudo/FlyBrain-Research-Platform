@@ -7,6 +7,7 @@ from wsgiref.simple_server import make_server
 from .chat_api import FlyBrainChatApp
 from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
 from .capability_mesh import TaskContractError, capability_registry, build_task_contract, plan_task_route, execute_read_only_capability
+from .service_emulation_governance import evaluate_component_review
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -42,7 +43,7 @@ class FlyBrainMCP:
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route", "evaluate_component_review"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
@@ -169,6 +170,12 @@ class FlyBrainMCP:
                          "required": ["objective", "capability_id", "allowed_providers", "arguments"],
                          "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": True}},
+                    {"name": "evaluate_component_review", "title": "Evaluate FASE component compliance evidence",
+                     "description": "Apply the fail-closed FASE component provenance, licence, clean-room, patent-escalation, terms, and security evidence gate. This is an engineering review aid, not legal advice or patent clearance. Does not install, execute, or approve deployment of a component.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "component_record": {"type": "object", "description": "Component provenance and review evidence record"}},
+                         "required": ["component_record"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -234,6 +241,14 @@ class FlyBrainMCP:
                     except (TaskContractError, ValueError) as exc:
                         raise ValueError(str(exc)) from exc
                     return self.send(start, "200 OK", self._tool_result(mid, executed, executed.get("status") == "error"))
+                if name == "evaluate_component_review":
+                    if set(args) != {"component_record"}:
+                        raise ValueError("evaluate_component_review requires only component_record")
+                    try:
+                        decision = evaluate_component_review(args["component_record"])
+                    except (ValueError, TypeError) as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, decision, decision.get("decision") == "blocked"))
                 if name == "ask_flybrain":
                     q = args.get("question")
                     if not isinstance(q, str) or not q.strip() or len(q) > 12000:
