@@ -19,7 +19,7 @@ class Capability:
     operations: tuple[str, ...]
     allowed_data_classes: tuple[str, ...]
     network_access: bool
-    estimated_cost_usd: float
+    estimated_cost_usd: float | None
     runtime_state: str
     read_only: bool = True
 
@@ -40,11 +40,11 @@ _CAPABILITIES = (
     ),
     Capability(
         "model.external_consultation", "modelhub", "Consult explicitly configured external models",
-        ("model_consultation",), ("public", "internal"), True, 0.0, "configuration_dependent", True,
+        ("model_consultation",), ("public", "internal"), True, None, "configuration_dependent", True,
     ),
     Capability(
         "browser.interactive", "browser_host", "Perform bounded interactive browser observation",
-        ("browser_run_task",), ("public",), True, 0.0, "not_ready_until_verified", False,
+        ("browser_run_task",), ("public",), True, None, "not_ready_until_verified", False,
     ),
 )
 
@@ -133,7 +133,8 @@ def plan_task_route(contract: dict[str, Any], requested_capability: str | None =
             continue
         if capability.network_access and not validated["allow_network"]:
             continue
-        if capability.estimated_cost_usd > validated["max_cost_usd"]:
+        # Unknown provider pricing is not treated as free under a zero-cost budget.
+        if capability.estimated_cost_usd is None or capability.estimated_cost_usd > validated["max_cost_usd"]:
             continue
         candidates.append(capability)
     # Prefer local execution; external/network routes are only considered when explicitly allowed.
