@@ -98,3 +98,11 @@ A security model or agent may review only this public specification and syntheti
 - The second attempt of workflow run `44728433023` was inspected through the GitHub Actions run-attempt jobs endpoint.
 - Both matrix jobs completed in approximately three seconds with empty `steps`, `runner_id=0`, and an empty `runner_name`. This confirms that neither job was assigned a runner; the failed conclusion is not a Python test result.
 - Job-log downloads returned `BlobNotFound`. Further retries are paused until runner availability is restored; repeated dispatches would not provide useful evidence.
+
+
+## Additional envelope-validation hardening (2026-11-20)
+
+- `decrypt_bytes` now rejects unsupported envelope format/algorithm identifiers and missing key metadata before calling the key wrapper.
+- `rewrap_data_key` now validates envelope type/format and source/target key metadata, validates the unwrapped DEK, rejects empty wrapped-key responses, and normalizes unexpected KMS adapter failures to `StorageEncryptionError`.
+- Synthetic tests now include malformed nonce and wrapped-DEK data, altered scope metadata, invalid KMS DEK/wrap responses, invalid target key metadata, KMS unwrap/wrap exceptions, unsupported envelope identifiers, and non-envelope input.
+- These are code and test additions only. Hosted CI has not yet supplied a successful test result; no production KMS, persistent storage, or file-encryption integration is configured.
