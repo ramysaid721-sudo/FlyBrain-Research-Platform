@@ -190,3 +190,37 @@ def test_execute_local_project_context_route_keeps_confidential_data_local(tmp_p
     assert result["data_classification"] == "confidential"
     assert result["side_effects"] is False
     assert result["result"]["sources"][0]["source"] == "README.md"
+
+
+
+def test_fase_component_compliance_tool_is_exposed_and_requires_auth(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    response, body = call(app, {"jsonrpc": "2.0", "id": 30, "method": "tools/list"})
+    names = {tool["name"] for tool in body["result"]["tools"]}
+    assert "evaluate_component_review" in names
+
+    request = {"jsonrpc": "2.0", "id": 31, "method": "tools/call",
+               "params": {"name": "evaluate_component_review", "arguments": {
+                   "component_record": {
+                       "component_id": "flybrain.native.service",
+                       "component_type": "original",
+                       "provenance_verified": True,
+                       "licence_review_status": "unreviewed",
+                       "clean_room_required": False,
+                       "clean_room_spec_approved": False,
+                       "restricted_material_accessed": False,
+                       "patent_review_required": False,
+                       "patent_review_status": "not_assessed",
+                       "trade_secret_review_status": "no_restricted_material",
+                       "terms_review_status": "approved",
+                       "security_review_status": "passed",
+                       "intended_use": "staging-only",
+                       "jurisdiction": "to-be-confirmed"
+                   }}}}
+    response, body = call(app, request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    response, body = call(app, request, token)
+    assert response["status"] == "200 OK"
+    assert body["result"]["structuredContent"]["decision"] == "eligible_for_human_approval"
+    assert body["result"]["structuredContent"]["release_eligible"] is True
