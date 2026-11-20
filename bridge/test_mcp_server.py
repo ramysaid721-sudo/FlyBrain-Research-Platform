@@ -55,7 +55,7 @@ def test_health_reports_http_research_and_interactive_browser_separately(tmp_pat
         "installed":False,"ready":False,"interactive_browser_ready":False,
         "web_search_ready":True,"web_fetch_ready":True,"provider":"ollama"
     })
-    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_status",lambda:{
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_status",lambda:{
         "provider":"koofr_webdav","configured":False,"connection_verified":False,
         "write_enabled":False,"ready":False,"credentials_exposed":False
     })
@@ -271,18 +271,18 @@ def test_fase_service_emulation_planner_is_authenticated_and_read_only(tmp_path)
 
 def test_koofr_webdav_tools_are_authenticated_and_writes_are_explicit(tmp_path, monkeypatch):
     token = "z" * 40
-    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_status", lambda: {
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_status", lambda: {
         "provider": "koofr_webdav", "configured": False, "write_enabled": False,
         "ready": False, "credentials_exposed": False
     })
-    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_read", lambda key: {
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_read", lambda key: {
         "status": "completed", "object_key": key, "content_base64": "aGVsbG8="
     })
     captured = {}
     def fake_write(key, content, confirm):
         captured.update({"key": key, "content": content, "confirm": confirm})
         return {"status": "completed", "object_key": key, "size_bytes": 5}
-    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_write", fake_write)
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_write", fake_write)
     app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
 
     status_request = {"jsonrpc": "2.0", "id": 50, "method": "tools/call",
@@ -316,7 +316,7 @@ def test_koofr_webdav_probe_is_authenticated_and_read_only(tmp_path, monkeypatch
     def fake_probe():
         captured["called"] = True
         return {"status": "connected", "connection_verified": True, "http_status": 207}
-    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_probe", fake_probe)
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_probe", fake_probe)
     app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
     request = {"jsonrpc": "2.0", "id": 53, "method": "tools/call",
                "params": {"name": "koofr_webdav_probe", "arguments": {}}}
