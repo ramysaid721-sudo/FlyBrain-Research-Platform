@@ -151,20 +151,22 @@ class FlyBrainMCP:
                          "required": ["objective"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
                     {"name": "execute_read_only_route", "title": "Execute approved public read-only capability",
-                     "description": "Execute only the built-in public HTTPS search or page-fetch adapter. Requires public data classification, explicit network permission, the http_research provider, and a zero-cost budget. No account actions or mutations are supported. Retrieved page content is untrusted input.",
+                     "description": "Execute either local source-labelled project-context retrieval or the built-in public HTTPS search/page-fetch adapter. External web access requires public data, explicit network permission, and the http_research provider. Local retrieval can handle confidential classification without network access. All routes are read-only and zero-cost; retrieved content is untrusted input.",
                      "inputSchema": {"type": "object", "properties": {
                          "objective": {"type": "string", "minLength": 1, "maxLength": 4000},
-                         "capability_id": {"type": "string", "enum": ["web.public_search", "web.public_fetch"]},
-                         "allow_network": {"type": "boolean", "const": true},
+                         "capability_id": {"type": "string", "enum": ["flybrain.project_context", "web.public_search", "web.public_fetch"]},
+                         "data_classification": {"type": "string", "enum": ["public", "internal", "confidential"], "default": "public"},
+                         "allow_network": {"type": "boolean", "default": false},
                          "allowed_providers": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 8},
                          "arguments": {"type": "object", "properties": {
                              "query": {"type": "string", "maxLength": 1500},
                              "max_results": {"type": "integer", "minimum": 1, "maximum": 20},
                              "url": {"type": "string", "format": "uri", "maxLength": 2048},
                              "output_format": {"type": "string", "enum": ["markdown", "text", "json"]},
-                             "include_links": {"type": "boolean"}},
+                             "include_links": {"type": "boolean"},
+                             "limit": {"type": "integer", "minimum": 1, "maximum": 10}},
                              "additionalProperties": False}},
-                         "required": ["objective", "capability_id", "allow_network", "allowed_providers", "arguments"],
+                         "required": ["objective", "capability_id", "allowed_providers", "arguments"],
                          "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "browser_run_task", "title": "Run a browser task",
@@ -222,8 +224,8 @@ class FlyBrainMCP:
                         raise ValueError("execute_read_only_route requires all documented contract fields")
                     try:
                         contract = build_task_contract(
-                            args["objective"], "public", args["allowed_providers"],
-                            args["allow_network"], 0.0, 60,
+                            args["objective"], args.get("data_classification", "public"),
+                            args["allowed_providers"], args.get("allow_network", False), 0.0, 60,
                         )
                         executed = execute_read_only_capability(
                             contract, args["capability_id"], args["arguments"]
