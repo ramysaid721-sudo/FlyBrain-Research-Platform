@@ -143,6 +143,8 @@ A first bounded storage adapter is now present:
 
 Writes require both `FLYBRAIN_KOOFR_WEBDAV_ALLOW_WRITE=true` on the server and `confirm_write=true` on the individual call. Object size is capped at 1 MB. No delete, move, share, or synchronization operation is implemented. The adapter is not configured with credentials and has not yet completed a live Koofr connection or file round-trip.
 
+**Deployment verification:** the latest Vercel Preview deployment loaded the new modules successfully and the live `/health` endpoint returned HTTP 200. Its response lists all four Koofr MCP tools and reports `configured=false`, `connection_verified=false`, and `write_enabled=false`. This confirms import and registration only; it does not prove Koofr connectivity or a storage round-trip. GitHub Actions unit tests have not yet been observed running for these commits.
+
 Official connection instructions: https://app.koofr.net/help/webdav
 
 **Remaining implementation boundary:** automated service discovery and candidate-source verification, a persistent registry, full USCL interface integration, multi-cloud replication, and restore verification remain unimplemented. The current planner accepts candidate evidence as input; it does not maintain or independently verify a catalogue. The planner validates finite cost estimates and uses supported-feature breadth only as a tie-breaker after all required gates pass. USCL remains design-only until a real backend adapter passes its acceptance tests. Existing capability-mesh routes do not constitute a general service factory or production-ready multi-cloud platform.
