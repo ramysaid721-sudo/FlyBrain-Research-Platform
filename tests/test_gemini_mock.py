@@ -13,6 +13,12 @@ class GeminiMockAdapterTests(unittest.TestCase):
         with self.assertRaises(MockProviderDisabled):
             GeminiMockAdapter().review("synthetic public test input")
 
+    def test_rejects_non_boolean_enable_flag(self):
+        for value in ("false", "true", 0, 1, None):
+            with self.subTest(value=value):
+                with self.assertRaises(TypeError):
+                    GeminiMockAdapter(enabled=value)
+
     def test_returns_explicit_mock_metadata(self):
         result = GeminiMockAdapter(enabled=True).review("synthetic public test input")
         payload = result.as_dict()
