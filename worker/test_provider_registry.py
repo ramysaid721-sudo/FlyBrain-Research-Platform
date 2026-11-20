@@ -26,6 +26,7 @@ def offer(name="alpha", **overrides):
         "priority": 10,
         "healthy": True,
         "circuit_open": False,
+        "quota_evidence_age_seconds": 0,
     }
     values.update(overrides)
     return ProviderOffer(**values)
@@ -197,6 +198,42 @@ class ProviderRegistryTests(unittest.TestCase):
     def test_non_provider_offer_is_rejected_as_invalid_input(self):
         with self.assertRaises(TypeError):
             select_provider(self.requirements, [object()])
+
+
+    def test_missing_and_stale_quota_evidence_fail_closed(self):
+        missing = select_provider(
+            self.requirements,
+            [offer(quota_evidence_age_seconds=None)],
+        )
+        self.assertFalse(missing.selected)
+        self.assertIn(("alpha", "quota_evidence_missing"), missing.rejected)
+
+        stale = select_provider(
+            self.requirements,
+            [offer(quota_evidence_age_seconds=121)],
+        )
+        self.assertFalse(stale.selected)
+        self.assertIn(("alpha", "quota_evidence_stale"), stale.rejected)
+
+    def test_fresh_quota_evidence_at_boundary_is_accepted(self):
+        result = select_provider(
+            self.requirements,
+            [offer(quota_evidence_age_seconds=120)],
+        )
+        self.assertTrue(result.selected)
+
+    def test_quota_evidence_age_rejects_invalid_types(self):
+        for age in (-1, True, 1.5, "1"):
+            with self.subTest(age=age):
+                with self.assertRaises(ValueError):
+                    offer(quota_evidence_age_seconds=age)
+
+        with self.assertRaises(ValueError):
+            TaskRequirements(
+                runtime="python3.12",
+                capability="pytest",
+                max_quota_evidence_age_seconds=0,
+            )
 
 
 if __name__ == "__main__":
