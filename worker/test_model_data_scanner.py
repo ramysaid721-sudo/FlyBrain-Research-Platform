@@ -76,5 +76,10 @@ class ModelDataScannerTests(unittest.TestCase):
             find_sensitive_content(None)
 
 
+    def test_json_quoted_credential_assignment_is_detected(self):
+        payload = '{"api_key":"synthetic-secret-value"}'
+        self.assertIn("credential_assignment", find_sensitive_content(payload))
+
+
 if __name__ == "__main__":
     unittest.main()

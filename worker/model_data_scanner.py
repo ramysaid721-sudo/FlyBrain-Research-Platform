@@ -24,7 +24,7 @@ _RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("openai_style_secret", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),
     ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")),
     ("credential_assignment", re.compile(
-        r"""(?i)\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|client[_-]?secret)\b\s*[:=]\s*["']?[^\s"'\x60]{8,}"""
+        r"""(?i)["']?\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|client[_-]?secret)\b["']?\s*[:=]\s*["']?[^\s"'\x60]{8,}"""
     )),
     ("email_address", re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")),
     ("phone_like_number", re.compile(r"(?<!\w)(?:\+?\d[\d .()/-]{7,}\d)(?!\w)")),
