@@ -97,11 +97,19 @@ async function handler(req, res) {
       });
     }
 
+    const requestedLeaseSeconds = Number(req.body && req.body.lease_seconds);
+    const leaseSeconds = Number.isInteger(requestedLeaseSeconds)
+      ? Math.max(30, Math.min(1800, requestedLeaseSeconds))
+      : 300;
     claim = await control(token, {
       action: "claim",
       worker_id: "vercel-sandbox-dispatcher",
-      lease_seconds: 300,
-      task_ids: ["d3000000-0000-4000-8000-000000000001", "d3000000-0000-4000-8000-000000000002"],
+      lease_seconds: leaseSeconds,
+      task_ids: [
+        "d3000000-0000-4000-8000-000000000001",
+        "d3000000-0000-4000-8000-000000000002",
+        "d3000000-0000-4000-8000-000000000006",
+      ],
     });
 
     if (!claim || claim.claimed !== true) {
@@ -166,6 +174,16 @@ async function handler(req, res) {
 
     const stdout = await command.stdout();
     const stderr = await command.stderr();
+    if (command.exitCode === 75) {
+      completed = true;
+      return res.status(202).json({
+        ok: true,
+        status: "worker_interrupted_for_continuity_test",
+        task_id: claim.task.id,
+        execution_id: executionId,
+        checkpoint: String(stdout || "").slice(0, 800),
+      });
+    }
     if (command.exitCode !== 0) {
       throw new Error(`Worker exited ${command.exitCode}: ${String(stderr || stdout).slice(0, 700)}`);
     }
