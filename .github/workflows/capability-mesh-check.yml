@@ -1,0 +1,42 @@
+name: FlyBrain Capability Mesh — Focused Tests
+
+on:
+  push:
+    branches: ["flybrain-browser-worker-staging"]
+    paths:
+      - "bridge/**"
+      - ".github/workflows/capability-mesh-check.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "bridge/**"
+      - ".github/workflows/capability-mesh-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capability-mesh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capability-mesh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test runner
+        run: python -m pip install pytest
+      - name: Assemble isolated bridge package
+        run: |
+          mkdir -p /tmp/flybrain_os
+          cp bridge/*.py /tmp/flybrain_os/
+          touch /tmp/flybrain_os/__init__.py
+      - name: Run capability and MCP tests
+        env:
+          PYTHONPATH: /tmp
+        run: python -m pytest -q bridge/test_capability_mesh.py bridge/test_mcp_server.py
