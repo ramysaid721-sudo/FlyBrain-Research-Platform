@@ -1,5 +1,6 @@
 """Unit tests for the fail-closed FACO provider selector."""
 import unittest
+from math import inf, nan
 
 from worker.provider_registry import (
     ProviderOffer,
@@ -132,6 +133,27 @@ class ProviderRegistryTests(unittest.TestCase):
         result = select_provider(self.requirements, [])
         self.assertIsNone(result.provider)
         self.assertFalse(result.selected)
+
+
+    def test_invalid_task_costs_and_runtime_are_rejected(self):
+        for invalid_cost in (-0.01, nan, inf):
+            with self.subTest(cost=invalid_cost):
+                with self.assertRaises(ValueError):
+                    TaskRequirements(
+                        runtime="python3.12",
+                        capability="pytest",
+                        max_cost_usd=invalid_cost,
+                    )
+        with self.assertRaises(ValueError):
+            TaskRequirements(runtime="python3.12", capability="pytest", max_runtime_seconds=0)
+
+    def test_invalid_provider_costs_and_capacity_are_rejected(self):
+        for invalid_cost in (-0.01, nan, inf):
+            with self.subTest(cost=invalid_cost):
+                with self.assertRaises(ValueError):
+                    offer(estimated_cost_usd=invalid_cost)
+        with self.assertRaises(ValueError):
+            offer(max_parallelism=-1)
 
 
 if __name__ == "__main__":
