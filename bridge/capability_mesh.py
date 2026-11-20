@@ -32,11 +32,11 @@ _CAPABILITIES = (
     ),
     Capability(
         "web.public_search", "http_research", "Search public HTTPS sources",
-        ("browser_search",), ("public",), True, 0.0, "runtime_dependent", True,
+        ("browser_search",), ("public",), True, 0.0, "adapter_available", True,
     ),
     Capability(
         "web.public_fetch", "http_research", "Fetch public HTTPS pages",
-        ("browser_fetch",), ("public",), True, 0.0, "runtime_dependent", True,
+        ("browser_fetch",), ("public",), True, 0.0, "adapter_available", True,
     ),
     Capability(
         "model.external_consultation", "modelhub", "Consult explicitly configured external models",
@@ -155,9 +155,51 @@ def plan_task_route(contract: dict[str, Any], requested_capability: str | None =
             "provider": item.provider,
             "operations": list(item.operations),
             "runtime_state": item.runtime_state,
-            "execution_ready": item.runtime_state == "available",
-            "requires_runtime_verification": item.runtime_state != "available",
+            "execution_ready": item.runtime_state in {"available", "adapter_available"},
+            "requires_runtime_verification": item.runtime_state not in {"available", "adapter_available"},
         } for item in candidates],
         "execution_started": False,
         "reason": "A candidate route was selected; this endpoint does not execute it.",
+    }
+
+
+def execute_read_only_capability(contract: dict[str, Any], capability_id: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Execute one explicitly authorized public-web read-only adapter."""
+    if not isinstance(arguments, dict) or not isinstance(contract, dict):
+        raise TaskContractError("contract and arguments must be objects")
+    validated = build_task_contract(
+        contract.get("objective"), contract.get("data_classification", "public"),
+        contract.get("allowed_providers", []), contract.get("allow_network", False),
+        contract.get("max_cost_usd", 0.0), contract.get("deadline_seconds", 60),
+    )
+    if contract.get("side_effects_allowed") is not False:
+        raise TaskContractError("Side effects are disabled")
+    if validated["data_classification"] != "public":
+        raise TaskContractError("External adapters accept public data only")
+    if not validated["allow_network"] or "http_research" not in validated["allowed_providers"]:
+        raise TaskContractError("Explicit public-network permission and http_research provider are required")
+    capability = next((item for item in _CAPABILITIES if item.capability_id == capability_id), None)
+    if capability is None or not capability.read_only or capability.provider != "http_research":
+        raise TaskContractError("Capability is not an approved read-only public-web adapter")
+    if capability.estimated_cost_usd is None or capability.estimated_cost_usd > validated["max_cost_usd"]:
+        raise TaskContractError("Capability cost is unknown or exceeds the approved budget")
+    from .browser_use_adapter import run_browser_fetch, run_browser_search
+    if capability_id == "web.public_search":
+        if set(arguments) - {"query", "max_results"}:
+            raise TaskContractError("Unexpected public-search argument")
+        result = run_browser_search(arguments.get("query"), arguments.get("max_results", 8))
+    elif capability_id == "web.public_fetch":
+        if set(arguments) - {"url", "output_format", "include_links"}:
+            raise TaskContractError("Unexpected public-fetch argument")
+        result = run_browser_fetch(arguments.get("url"), arguments.get("output_format", "markdown"), arguments.get("include_links", True))
+    else:
+        raise TaskContractError("No execution adapter is registered for this capability")
+    return {
+        "status": result.get("status", "completed"),
+        "capability_id": capability_id, "provider": capability.provider,
+        "data_classification": "public", "side_effects": False, "execution_started": True,
+        "provenance": {"adapter": "flybrain.browser_use_adapter",
+                       "method": "public HTTPS search or page extraction",
+                       "content_is_untrusted": True},
+        "result": result,
     }
