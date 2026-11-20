@@ -239,3 +239,10 @@ References:
 - https://docs.browserless.io/rest-apis/intro
 
 Browserless REST endpoints are stateless and do not preserve cookies or sessions between calls. Persistent login workflows would require a separate BaaS session integration and must be designed and authorized independently.
+### Account and deployment readiness check — 2026-11-20
+
+Vercel project metadata was inspected without decrypting existing secrets. The project currently has no connected Git repository, so a branch-scoped Preview environment could not be provisioned through the Vercel project environment API. No Browserless token was found among the listed project environment-variable names. No Browserless secret was created, no deployment was triggered, and no paid request was sent.
+
+Browserless currently advertises a $0 Free plan with no card required, 1,000 monthly units, 2 concurrent browsers, and a 2-minute maximum session. Requests remain metered against the plan's units; the integration therefore requires explicit `BROWSERLESS_ALLOW_USAGE=true` after the account owner provisions the token. The free plan pauses requests when its monthly allowance is exhausted.
+
+Official pricing: https://www.browserless.io/pricing
