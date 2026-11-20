@@ -12,6 +12,7 @@ A provider offer is eligible only when all of the following are explicitly true:
 
 - Provider is enabled and healthy; its circuit breaker is closed.
 - Free capacity is confirmed by an account/quota check.
+- Quota evidence must include an explicit age and be no older than the task's configured freshness window (default: 120 seconds). Missing or stale evidence is rejected.
 - Estimated cost is explicitly supplied and does not exceed the task ceiling. The default task ceiling is USD 0.
 - A concurrency slot is available.
 - Runtime, capability, data-class, network, region, and maximum-duration requirements are satisfied.
@@ -45,4 +46,4 @@ Run from the repository root:
 python -m unittest worker.test_provider_registry -v
 ```
 
-The test suite covers zero-cost admission, unknown quota rejection, circuit breaker, health, concurrency, runtime and data-class constraints, network/region requirements, and deterministic ordering.
+The test suite covers zero-cost admission, missing/stale quota evidence, circuit breaker, health, concurrency, strict input validation, runtime and data-class constraints, network/region requirements, and deterministic ordering.
