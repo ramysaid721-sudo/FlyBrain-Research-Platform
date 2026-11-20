@@ -120,4 +120,15 @@ Every transition records actor, evidence, timestamp, version, and rationale. A n
 - No paid fallback or production deployment occurs without explicit authorization.
 - Service health and capability status reflect observed evidence, not documentation alone.
 
-**Current implementation boundary:** this document is architecture only. Existing USCL remains design-only until a real backend adapter passes its acceptance tests. Existing capability-mesh routes do not constitute a general service factory or production-ready multi-cloud platform.
+## 10. Staging implementation update
+
+The following bounded governance slice has been added:
+- Component review model and fail-closed evaluator in bridge/service_emulation_governance.py.
+- Authenticated MCP tool evaluate_component_review in bridge/mcp_server.py.
+- Unit tests in bridge/test_service_emulation_governance.py and an MCP exposure/authentication test in bridge/test_mcp_server.py.
+
+The evaluator checks recorded provenance, third-party source and licence identification, clean-room evidence, restricted-material declarations, patent escalation state, service terms, and security review. It returns eligibility for human approval, not an automatic legal approval. Conditional approvals remain blocked until conditions are explicitly enforced. It does not search patent registers or determine infringement.
+
+**Verification boundary:** files and MCP registration have been committed and re-fetched from staging. GitHub Actions execution is not yet verified; the repository's recent Actions failures were associated with account spending-limit blocks and unavailable job logs. Do not treat the tests as passed until a runner executes them. No production deployment or merge is authorized.
+
+**Remaining implementation boundary:** FASE service discovery, candidate scoring, provider-neutral adapters, USCL storage adapters, multi-cloud replication, and restore verification remain unimplemented. USCL remains design-only until a real backend adapter passes its acceptance tests. Existing capability-mesh routes do not constitute a general service factory or production-ready multi-cloud platform.
