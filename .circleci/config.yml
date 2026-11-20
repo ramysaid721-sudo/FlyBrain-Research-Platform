@@ -1,0 +1,69 @@
+version: 2.1
+
+# Independent, secret-free CI fallback for FlyBrain.
+# Mirrors the release validation path; no deployment or external secrets.
+jobs:
+  validate:
+    parameters:
+      python-version:
+        type: string
+    docker:
+      - image: cimg/python:<< parameters.python-version >>
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Select matrix Python interpreter
+          command: |
+            pyenv local << parameters.python-version >>
+            python --version
+            python -m pip --version
+      - run:
+          name: Verify release archive, apply bridge overlay, and patch search parser
+          command: |
+            python -m zipfile -e FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip .release
+            test -d .release/FlyBrain_Research_Platform_v0.14.0
+            python scripts/apply_chat_bridge.py --source .release/FlyBrain_Research_Platform_v0.14.0
+            python scripts/patch_release_browser_search.py .release/FlyBrain_Research_Platform_v0.14.0
+      - run:
+          name: Validate tool lifecycle policy
+          command: |
+            python -m py_compile bridge/tool_manager.py bridge/mcp_server.py api/index.py
+            PYTHONPATH=bridge python -c "from tool_manager import ToolLifecycleManager; m=ToolLifecycleManager(); assert m.assess('pip-audit')['status']=='eligible_for_isolated_testing'; assert m.assess('nmap')['status']=='blocked'; assert m.assess('not-allowlisted')['status']=='review_required'; assert m.status()['automatic_installation'] is False; print('TOOL LIFECYCLE POLICY TESTS PASSED')"
+            python -m unittest discover -s tests -p 'test_tool_manager.py' -v
+      - run:
+          name: Install release test dependencies
+          working_directory: .release/FlyBrain_Research_Platform_v0.14.0
+          command: |
+            python -m pip install pytest
+            python -m pip install -e ./components/URCAL
+            python -m pip install -e ./components/FlyBrain-NOS
+            python -m pip install -e ./adapters/FlyBrain-URCAL-Adapter
+      - run:
+          name: Run URCAL tests
+          working_directory: .release/FlyBrain_Research_Platform_v0.14.0
+          command: python -m pytest -q components/URCAL/tests
+      - run:
+          name: Run FlyBrain bridge and browser adapter tests
+          working_directory: .release/FlyBrain_Research_Platform_v0.14.0
+          command: python -m pytest -q components/FlyBrain-NOS/tests/test_chat_api.py components/FlyBrain-NOS/tests/test_mcp_server.py components/FlyBrain-NOS/tests/test_browser_use_adapter.py
+      - run:
+          name: Run FlyBrain and URCAL integration tests
+          working_directory: .release/FlyBrain_Research_Platform_v0.14.0
+          command: python scripts/run_stack_tests.py --flybrain components/FlyBrain-NOS --urcal components/URCAL
+      - run:
+          name: Compile packages and verify imports
+          working_directory: .release/FlyBrain_Research_Platform_v0.14.0
+          command: |
+            python -m compileall -q components/URCAL/urcal components/FlyBrain-NOS/flybrain_os adapters/FlyBrain-URCAL-Adapter
+            python -c "import urcal, flybrain_os, flybrain_urcal_adapter; print('ALL IMPORTS PASSED')"
+
+workflows:
+  fallback-python-matrix:
+    jobs:
+      - validate:
+          name: validate-python-3-12
+          python-version: "3.12"
+      - validate:
+          name: validate-python-3-13
+          python-version: "3.13"
