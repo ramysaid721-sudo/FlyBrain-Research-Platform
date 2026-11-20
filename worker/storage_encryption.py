@@ -152,22 +152,39 @@ def rewrap_data_key(
     new_kek_id: str, new_kek_version: str,
 ) -> EncryptedEnvelope:
     """Rotate KEK wrapping without changing ciphertext or its DEK."""
-    dek = key_wrapper.unwrap_key(
-        key_id=envelope.kek_id, key_version=envelope.kek_version,
-        wrapped_key=_decode(envelope.wrapped_dek_b64, "wrapped DEK"),
-    )
-    if not isinstance(dek, bytes) or len(dek) != 32:
-        raise StorageEncryptionError("KMS returned an invalid DEK")
-    wrapped = key_wrapper.wrap_key(
-        key_id=new_kek_id, key_version=new_kek_version, plaintext_key=dek
-    )
-    if not isinstance(wrapped, bytes) or not wrapped:
-        raise StorageEncryptionError("KMS returned an invalid wrapped key")
+    if not isinstance(envelope, EncryptedEnvelope):
+        raise TypeError("envelope must be EncryptedEnvelope")
+    if envelope.format != _FORMAT or envelope.algorithm != _ALGORITHM:
+        raise StorageEncryptionError("unsupported encrypted envelope")
+    if not all(isinstance(value, str) and value for value in (
+        envelope.object_id, envelope.scope, envelope.schema_version,
+        envelope.kek_id, envelope.kek_version, new_kek_id, new_kek_version,
+    )):
+        raise StorageEncryptionError("invalid envelope or target KMS key metadata")
+
+    wrapped_dek = _decode(envelope.wrapped_dek_b64, "wrapped DEK")
+    try:
+        dek = key_wrapper.unwrap_key(
+            key_id=envelope.kek_id, key_version=envelope.kek_version,
+            wrapped_key=wrapped_dek,
+        )
+        if not isinstance(dek, bytes) or len(dek) != 32:
+            raise StorageEncryptionError("KMS returned an invalid DEK")
+        new_wrapped_dek = key_wrapper.wrap_key(
+            key_id=new_kek_id, key_version=new_kek_version, plaintext_key=dek
+        )
+        if not isinstance(new_wrapped_dek, bytes) or not new_wrapped_dek:
+            raise StorageEncryptionError("KMS returned an invalid wrapped key")
+    except StorageEncryptionError:
+        raise
+    except Exception as exc:
+        raise StorageEncryptionError("KMS key rewrap operation failed") from exc
+
     return EncryptedEnvelope(
         **{**envelope.__dict__,
            "kek_id": new_kek_id,
            "kek_version": new_kek_version,
-           "wrapped_dek_b64": base64.b64encode(wrapped).decode("ascii")}
+           "wrapped_dek_b64": base64.b64encode(new_wrapped_dek).decode("ascii")}
     )
 
 
