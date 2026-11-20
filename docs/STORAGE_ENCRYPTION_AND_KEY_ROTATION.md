@@ -84,3 +84,10 @@ A security model or agent may review only this public specification and syntheti
 - Supabase reports `flybrain-control` as ACTIVE with `verify_jwt=false`. Inspection of its source shows it performs a separate `x-flybrain-token` check through `verify_flybrain_worker_token`, requiring a token of at least 40 characters and comparing it with the Vault secret named `flybrain_worker_token`. The secret value was not read. This custom authentication path requires a dedicated security review; the function was not modified.
 - The `flybrain_side_effects` RLS informational finding was inspected. Table grants surfaced only for `postgres` and `service_role`, with no `anon` or `authenticated` grants in the returned result. No policy was added or permissions changed.
 - Supabase Vault is installed. No secret values were retrieved, created, rotated, or changed.
+
+
+## Local synthetic test execution (2026-11-20)
+
+- The eight storage-encryption unit tests were executed locally against the fetched Staging-branch source using Python 3.13.5 and `cryptography 46.0.4`.
+- Result: 8 tests passed.
+- This verifies the synthetic adapter/test path in that local runtime only. It does not establish Python 3.12 compatibility, hosted-runner success, production KMS integration, or persistent-storage encryption.
