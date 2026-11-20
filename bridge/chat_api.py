@@ -42,6 +42,32 @@ def _guarded_post_chat(
         provider, prompt, timeout=timeout, opener=checked_opener
     )
 
+def _has_trusted_public_project_context(context: list[dict]) -> bool:
+    """Accept only excerpts produced from the pinned public release allowlist."""
+    if not isinstance(context, list) or not context:
+        return False
+    for item in context:
+        if not isinstance(item, dict):
+            return False
+        source = item.get("source")
+        if not isinstance(source, str) or not source or source.startswith(("/", "\\")):
+            return False
+        parts = Path(source).parts
+        if ".." in parts or any(part in ("", ".") for part in parts):
+            return False
+        allowed = (
+            source == "README.md"
+            or source == "components/FlyBrain-NOS/README.md"
+            or source.startswith("components/FlyBrain-NOS/docs/")
+            or source == "components/URCAL/README.md"
+            or source.startswith("components/URCAL/docs/")
+            or source == "components/FlyBrain-NOS/data/flywire_fafb_v783_source.json"
+        )
+        if not allowed:
+            return False
+    return True
+
+
 def retrieve_project_context(question: str, release_root: str | Path | None = None, limit: int = 6) -> list[dict]:
     """Return ranked, source-labelled project excerpts without external APIs."""
     root = Path(release_root) if release_root else Path(__file__).resolve().parents[3]
@@ -136,9 +162,17 @@ class FlyBrainChatApp:
                 if os.environ.get("FLYBRAIN_OPENROUTER_ENABLED", "false").strip().lower() == "true":
                     from .model_data_policy import ExternalModelDataPolicyError
                     from .openrouter_client import OpenRouterBridgeError, generate_public_project_answer
-                    if data.get("allow_external_public_research") is not True:
+                    if (
+                        data.get("allow_external_public_research") is not True
+                        or data.get("question_is_public") is not True
+                    ):
                         return self._response(start_response, "403 Forbidden", {
-                            "error": "explicit_public_research_consent_required",
+                            "error": "explicit_public_question_attestation_and_transfer_consent_required",
+                            "external_data_transfer": False,
+                        })
+                    if not _has_trusted_public_project_context(context):
+                        return self._response(start_response, "422 Unprocessable Entity", {
+                            "error": "trusted_public_project_context_unavailable",
                             "external_data_transfer": False,
                         })
                     serialized_public_payload = json.dumps(
