@@ -133,3 +133,38 @@ def test_confidential_task_route_is_forced_to_local(tmp_path):
     assert plan["contract"]["allowed_providers"] == ["local"]
     assert plan["contract"]["allow_network"] is False
     assert plan["execution_started"] is False
+
+
+def test_execute_read_only_route_uses_public_search_adapter(tmp_path, monkeypatch):
+    token = "z" * 40
+    monkeypatch.setattr("flybrain_os.browser_use_adapter.run_browser_search",
+                        lambda query, max_results: {
+                            "status": "completed", "query": query,
+                            "results": [{"title": "Public source", "url": "https://example.org"}],
+                        })
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 23, "method": "tools/call",
+               "params": {"name": "execute_read_only_route", "arguments": {
+                   "objective": "Search public climate information",
+                   "capability_id": "web.public_search",
+                   "allow_network": True,
+                   "allowed_providers": ["http_research"],
+                   "arguments": {"query": "public climate information", "max_results": 2}}}}
+    response, body = call(app, request)
+    result = body["result"]["structuredContent"]
+    assert response["status"] == "200 OK"
+    assert result["execution_started"] is True
+    assert result["side_effects"] is False
+    assert result["result"]["results"][0]["url"] == "https://example.org"
+
+
+def test_execute_read_only_route_rejects_unapproved_arguments(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 24, "method": "tools/call",
+               "params": {"name": "execute_read_only_route", "arguments": {
+                   "objective": "Search", "capability_id": "web.public_search",
+                   "allow_network": True, "allowed_providers": ["http_research"],
+                   "arguments": {"query": "topic", "arbitrary": "not allowed"}}}}
+    response, body = call(app, request)
+    assert response["status"] == "400 Bad Request"
