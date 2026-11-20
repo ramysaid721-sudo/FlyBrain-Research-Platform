@@ -101,7 +101,7 @@ async function handler(req, res) {
       action: "claim",
       worker_id: "vercel-sandbox-dispatcher",
       lease_seconds: 300,
-      task_ids: ["d3000000-0000-4000-8000-000000000001"],
+      task_ids: ["d3000000-0000-4000-8000-000000000001", "d3000000-0000-4000-8000-000000000002"],
     });
 
     if (!claim || claim.claimed !== true) {
