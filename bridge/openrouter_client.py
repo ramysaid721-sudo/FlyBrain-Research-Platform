@@ -113,6 +113,8 @@ def generate_public_project_answer(
         or result.get("requested_model_route") != "openrouter/free"
         or result.get("data_scope") != "public_project_research"
         or result.get("external_data_transfer") is not True
+        or not isinstance(result.get("served_model"), str)
+        or not result["served_model"].endswith(":free")
         or not isinstance(result.get("answer"), str)
         or not result["answer"].strip()
     ):
