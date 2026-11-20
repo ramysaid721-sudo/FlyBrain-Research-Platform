@@ -72,7 +72,10 @@ async function handler(req, res) {
     }
 
     const { Sandbox } = await import("@vercel/sandbox");
+    const { getVercelOidcToken } = await import("@vercel/oidc");
+    const oidcToken = await getVercelOidcToken({ team: TEAM_ID, project: PROJECT_ID });
     sandbox = await Sandbox.getOrCreate({
+      token: oidcToken,
       name: SANDBOX_NAME,
       teamId: TEAM_ID,
       projectId: PROJECT_ID,
