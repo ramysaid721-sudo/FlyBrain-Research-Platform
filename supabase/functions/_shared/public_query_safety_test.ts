@@ -9,6 +9,8 @@ Deno.test("allows ordinary public bibliographic queries", () => {
 Deno.test("blocks personal data and common credential formats", () => {
   const sensitiveQueries = [
     "research contact person@example.org",
+    "research contact person%40example.org",
+    "research contact person%2540example.org",
     "-----BEGIN PRIVATE KEY-----",
     ["ghp_", "abcdefghijklmnopqrstuvwxyz123456"].join(""),
     ["github_pat_", "abcdefghijklmnopqrstuvwxyz123456"].join(""),
