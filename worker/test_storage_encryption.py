@@ -262,6 +262,34 @@ class StorageEncryptionTests(unittest.TestCase):
                 new_kek_id="test-kek", new_kek_version="v2",
             )
 
+    def test_rewrap_rejects_malformed_nonce(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        for nonce in (b"short", b""):
+            malformed = EncryptedEnvelope(**{
+                **envelope.__dict__,
+                "nonce_b64": base64.b64encode(nonce).decode("ascii"),
+            })
+            with self.subTest(nonce_length=len(nonce)):
+                with self.assertRaises(StorageEncryptionError):
+                    rewrap_data_key(
+                        malformed, key_wrapper=self.kms,
+                        new_kek_id="test-kek", new_kek_version="v2",
+                    )
+
+    def test_rewrap_rejects_malformed_ciphertext(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        for ciphertext in (b"short", b""):
+            malformed = EncryptedEnvelope(**{
+                **envelope.__dict__,
+                "ciphertext_b64": base64.b64encode(ciphertext).decode("ascii"),
+            })
+            with self.subTest(ciphertext_length=len(ciphertext)):
+                with self.assertRaises(StorageEncryptionError):
+                    rewrap_data_key(
+                        malformed, key_wrapper=self.kms,
+                        new_kek_id="test-kek", new_kek_version="v2",
+                    )
+
     def _decrypt(self, envelope):
         return decrypt_bytes(
             envelope,
