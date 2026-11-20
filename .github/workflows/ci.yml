@@ -39,6 +39,9 @@ jobs:
         run: |
           python -m zipfile -e FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip .release
           test -d .release/FlyBrain_Research_Platform_v0.14.0
+
+      - name: Run offline multi-agent queue handoff tests
+        run: python -m unittest discover -s tests -p 'test_multi_agent_dry_run.py' -v
       - name: Apply ChatGPT bridge overlay
         run: python scripts/apply_chat_bridge.py --source .release/FlyBrain_Research_Platform_v0.14.0
 
