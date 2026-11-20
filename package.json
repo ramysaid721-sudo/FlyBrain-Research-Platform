@@ -6,6 +6,7 @@
     "node": "26.x"
   },
   "dependencies": {
+    "@vercel/oidc": "3.2.0",
     "@vercel/sandbox": "3.6.1"
   }
 }
