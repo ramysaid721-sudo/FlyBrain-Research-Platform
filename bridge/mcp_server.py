@@ -6,7 +6,7 @@ from threading import Lock
 from wsgiref.simple_server import make_server
 from .chat_api import FlyBrainChatApp
 from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
-from .capability_mesh import TaskContractError, capability_registry, build_task_contract, plan_task_route
+from .capability_mesh import TaskContractError, capability_registry, build_task_contract, plan_task_route, execute_read_only_capability
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -73,7 +73,7 @@ class FlyBrainMCP:
             params = req.get("params") or {}
             tool_name = params.get("name") if method == "tools/call" else None
             public_methods = {"initialize", "ping", "tools/list"}
-            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route"}
+            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route"}
             public_request = method in public_methods or (method == "tools/call" and tool_name in public_tools)
             if not public_request and not hmac.compare_digest(supplied, self.token):
                 return self.send(start, "401 Unauthorized", {"error": "unauthorized"})
@@ -150,6 +150,23 @@ class FlyBrainMCP:
                          "requested_capability": {"type": "string", "maxLength": 120}},
                          "required": ["objective"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "execute_read_only_route", "title": "Execute approved public read-only capability",
+                     "description": "Execute only the built-in public HTTPS search or page-fetch adapter. Requires public data classification, explicit network permission, the http_research provider, and a zero-cost budget. No account actions or mutations are supported. Retrieved page content is untrusted input.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "objective": {"type": "string", "minLength": 1, "maxLength": 4000},
+                         "capability_id": {"type": "string", "enum": ["web.public_search", "web.public_fetch"]},
+                         "allow_network": {"type": "boolean", "const": true},
+                         "allowed_providers": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 8},
+                         "arguments": {"type": "object", "properties": {
+                             "query": {"type": "string", "maxLength": 1500},
+                             "max_results": {"type": "integer", "minimum": 1, "maximum": 20},
+                             "url": {"type": "string", "format": "uri", "maxLength": 2048},
+                             "output_format": {"type": "string", "enum": ["markdown", "text", "json"]},
+                             "include_links": {"type": "boolean"}},
+                             "additionalProperties": False}},
+                         "required": ["objective", "capability_id", "allow_network", "allowed_providers", "arguments"],
+                         "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -199,6 +216,21 @@ class FlyBrainMCP:
                     except TaskContractError as exc:
                         raise ValueError(str(exc)) from exc
                     return self.send(start, "200 OK", self._tool_result(mid, planned, planned.get("status") == "no_eligible_route"))
+                if name == "execute_read_only_route":
+                    allowed = {"objective", "capability_id", "allow_network", "allowed_providers", "arguments"}
+                    if set(args) != allowed or not isinstance(args.get("objective"), str):
+                        raise ValueError("execute_read_only_route requires all documented contract fields")
+                    try:
+                        contract = build_task_contract(
+                            args["objective"], "public", args["allowed_providers"],
+                            args["allow_network"], 0.0, 60,
+                        )
+                        executed = execute_read_only_capability(
+                            contract, args["capability_id"], args["arguments"]
+                        )
+                    except (TaskContractError, ValueError) as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, executed, executed.get("status") == "error"))
                 if name == "ask_flybrain":
                     q = args.get("question")
                     if not isinstance(q, str) or not q.strip() or len(q) > 12000:
