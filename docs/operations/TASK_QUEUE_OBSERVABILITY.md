@@ -157,3 +157,30 @@ The two historical failed rows had the explicit marker `synthetic_test_cleaned_u
 - The `data_classification = public` flag is a caller assertion, not an independent proof of public status.
 - Private-schema RLS linter INFO notices are not a reason to add permissive policies. Preserve the current restricted grants and review actual role access before changing policies.
 - All checks in this runbook are read-only. Any repair, schema change, retry, archive deletion, or Production operation requires a separate reviewed action.
+
+
+## 10. Worker HTTP response semantics
+
+The current worker intentionally distinguishes authentication/infrastructure failures from task-level failures:
+
+| HTTP status | Meaning |
+|---:|---|
+| 200 | Worker idle or task completed |
+| 202 | Crossref rate-limited; task deferred for retry |
+| 401 | Missing or incorrect worker capability secret |
+| 409 | Claim/completion/failure state conflict |
+| 502 | Task execution failed and the ledger was updated as failed or requeued |
+| 503 | Worker configuration, queue, or task-state update unavailable |
+
+A 502 with `status = failed_or_requeued` does not by itself mean the worker process crashed. Inspect the returned `error_code` and task ledger state. For example, the direct defense-in-depth test against a synthetic sensitive task produced `query_blocked_by_external_data_safety_policy`, marked the task failed, and did not send the query to Crossref.
+
+## 11. Cron and queue health spot-check (2026-11-20 UTC)
+
+- The 12 most recent recorded Cron runs were all `succeeded`.
+- The worker schedule remained active at once per minute.
+- Queue metrics reported `queue_length = 0` and `queue_visible_length = 0`.
+- The task ledger had 25 completed and 2 historical synthetic-test failures.
+- There were zero queued or running tasks and zero expired leases.
+- The no-token worker POST returned HTTP 401; the associated temporary HTTP response row was removed after inspection.
+
+Cron success means the scheduled SQL command executed successfully; it does not alone prove that an actual task was completed. Pair Cron history with queue depth and task-ledger state.
