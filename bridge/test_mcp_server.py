@@ -224,3 +224,40 @@ def test_fase_component_compliance_tool_is_exposed_and_requires_auth(tmp_path):
     assert response["status"] == "200 OK"
     assert body["result"]["structuredContent"]["decision"] == "eligible_for_human_approval"
     assert body["result"]["structuredContent"]["release_eligible"] is True
+
+
+def test_fase_service_emulation_planner_is_authenticated_and_read_only(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 40, "method": "tools/call",
+               "params": {"name": "plan_service_emulation", "arguments": {
+                   "request": {
+                       "capability": "search",
+                       "required_features": ["full_text"],
+                       "data_classification": "public",
+                       "deployment_mode": "self_hosted",
+                       "candidates": [{
+                           "candidate_id": "native.search.v1",
+                           "capability": "search",
+                           "implementation_type": "original",
+                           "review_status": "approved",
+                           "licence_status": "approved",
+                           "provenance_verified": True,
+                           "terms_status": "approved",
+                           "security_status": "passed",
+                           "cost_state": "known_zero",
+                           "estimated_monthly_cost": 0,
+                           "supports_requirements": ["full_text"],
+                           "data_classes": ["public"],
+                           "deployment_modes": ["self_hosted"],
+                           "operationally_verified": True
+                       }]
+                   }}}}
+    response, body = call(app, request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    response, body = call(app, request, token)
+    assert response["status"] == "200 OK"
+    result = body["result"]["structuredContent"]
+    assert result["selected_candidate"]["candidate_id"] == "native.search.v1"
+    assert result["execution_performed"] is False
+    assert result["activation_performed"] is False
