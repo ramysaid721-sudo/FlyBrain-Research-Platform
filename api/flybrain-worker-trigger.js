@@ -55,6 +55,48 @@ async function handler(req, res) {
   let completed = false;
 
   try {
+    if (req.body && req.body.action === "sandbox_health") {
+      const { Sandbox } = await import("@vercel/sandbox");
+      const { getVercelOidcToken } = await import("@vercel/oidc");
+      const oidcToken = await getVercelOidcToken({ team: TEAM_ID, project: PROJECT_ID });
+      sandbox = await Sandbox.getOrCreate({
+        token: oidcToken,
+        name: SANDBOX_NAME,
+        teamId: TEAM_ID,
+        projectId: PROJECT_ID,
+        region: "sin1",
+        resources: { vcpus: 1 },
+        timeout: 60000,
+        persistent: true,
+        networkPolicy: {
+          mode: "custom",
+          allowedDomains: [
+            "github.com",
+            "api.github.com",
+            "raw.githubusercontent.com",
+            "zjhzfjzadrpsbfphxgjw.supabase.co",
+          ],
+        },
+      });
+      const healthCommand = await sandbox.runCommand({
+        cmd: "bash",
+        args: ["-lc", "python3 --version && git -C /vercel/FlyBrain-Research-Platform rev-parse --short HEAD"],
+        cwd: "/vercel",
+        timeoutMs: 15000,
+      });
+      const healthOutput = await healthCommand.stdout();
+      if (healthCommand.exitCode !== 0) {
+        throw new Error("Sandbox health command failed");
+      }
+      completed = true;
+      return res.status(200).json({
+        ok: true,
+        worker: "vercel-sandbox",
+        oidc: "authenticated",
+        health: String(healthOutput || "").trim().slice(0, 200),
+      });
+    }
+
     claim = await control(token, {
       action: "claim",
       worker_id: "vercel-sandbox-dispatcher",
