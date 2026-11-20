@@ -60,4 +60,6 @@ A task orchestrator can continue deterministic jobs without an LLM. Autonomous r
 - The workflow's first run failed before any step; GitHub reported runner_id=0, empty runner_name, and an empty steps array.
 - Therefore, the build/test sequence has not run and no test pass is claimed.
 - Vercel Preview deployment and health checks have succeeded previously, but that proves only the existing service build/health path, not the control plane.
-- No durable mission ledger, scheduler, watchdog, or external model-backed autonomous repair loop is operational yet.
+- An existing Supabase Free project (`forge-ai-db`, ref `zjhzfjzadrpsbfphxgjw`) already contains an RLS-enabled mission schema: organizations, projects, tasks, executions, checkpoints, verification_evidence, approval_requests, and audit_events. Security advisors returned no lints at inspection time.
+- A FlyBrain / URCAL mission project and eight durable tasks were seeded in that database. The first task is READY; seven are PLANNED or WAITING_APPROVAL. Two failed GitHub runner attempts and their external-check evidence were recorded. The model endpoint task is WAITING_APPROVAL because provider credentials and a hard cost ceiling are not configured.
+- The database has no pg_cron, pg_net, or pgmq extensions enabled at inspection time, and no Edge Functions deployed. Thus the scheduler, watchdog, worker adapter, and external model-backed repair loop are not operational yet.
