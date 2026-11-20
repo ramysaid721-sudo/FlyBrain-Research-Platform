@@ -182,6 +182,67 @@ class StorageEncryptionTests(unittest.TestCase):
                 **{**self.kwargs, "key_wrapper": EmptyWrappedKeyKMS()},
             )
 
+
+    def test_rewrap_rejects_invalid_target_key_metadata(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        for key_id, key_version in (("", "v2"), ("test-kek", "")):
+            with self.subTest(key_id=key_id, key_version=key_version):
+                with self.assertRaises(StorageEncryptionError):
+                    rewrap_data_key(
+                        envelope, key_wrapper=self.kms,
+                        new_kek_id=key_id, new_kek_version=key_version,
+                    )
+
+    def test_rewrap_normalizes_kms_unwrap_failure(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+
+        class FailingUnwrapKMS:
+            def unwrap_key(self, **kwargs):
+                raise RuntimeError("synthetic unwrap failure")
+
+        with self.assertRaisesRegex(StorageEncryptionError, "rewrap operation failed"):
+            rewrap_data_key(
+                envelope, key_wrapper=FailingUnwrapKMS(),
+                new_kek_id="test-kek", new_kek_version="v2",
+            )
+
+    def test_rewrap_normalizes_kms_wrap_failure(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+
+        class FailingWrapKMS:
+            def unwrap_key(self, **kwargs):
+                return self.kms.unwrap_key(**kwargs)
+
+            def wrap_key(self, **kwargs):
+                raise RuntimeError("synthetic wrap failure")
+
+        failing = FailingWrapKMS()
+        failing.kms = self.kms
+        with self.assertRaisesRegex(StorageEncryptionError, "rewrap operation failed"):
+            rewrap_data_key(
+                envelope, key_wrapper=failing,
+                new_kek_id="test-kek", new_kek_version="v2",
+            )
+
+    def test_rewrap_rejects_unsupported_envelope_format(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        malformed = EncryptedEnvelope(**{
+            **envelope.__dict__,
+            "format": "unknown-envelope-format",
+        })
+        with self.assertRaises(StorageEncryptionError):
+            rewrap_data_key(
+                malformed, key_wrapper=self.kms,
+                new_kek_id="test-kek", new_kek_version="v2",
+            )
+
+    def test_rewrap_rejects_non_envelope_input(self):
+        with self.assertRaises(TypeError):
+            rewrap_data_key(
+                {"not": "an envelope"}, key_wrapper=self.kms,
+                new_kek_id="test-kek", new_kek_version="v2",
+            )
+
     def _decrypt(self, envelope):
         return decrypt_bytes(
             envelope,
