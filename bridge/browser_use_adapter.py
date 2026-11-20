@@ -230,7 +230,8 @@ def browser_use_status() -> dict:
         "web_search_ready": True, "web_fetch_ready": True,
         "browser_mode": "local Chromium" if provider != "browser-use-cloud" else "Browser Use Cloud",
         "reason": reason, "persistent_profiles": False,
-        "note": "HTTP search and extraction work independently. Interactive browser control is not active until a live Browser Use task succeeds.",
+        "browserless": browserless_status(),
+        "note": "HTTP search and extraction work independently. Browserless rendered extraction is opt-in and disabled until its secret and usage flag are configured. Interactive browser control is not active until a live Browser Use task succeeds.",
     }
 
 
