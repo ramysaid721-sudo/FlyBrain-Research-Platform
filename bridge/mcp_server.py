@@ -219,9 +219,10 @@ class FlyBrainMCP:
                         raise ValueError(str(exc)) from exc
                     return self.send(start, "200 OK", self._tool_result(mid, planned, planned.get("status") == "no_eligible_route"))
                 if name == "execute_read_only_route":
-                    allowed = {"objective", "capability_id", "allow_network", "allowed_providers", "arguments"}
-                    if set(args) != allowed or not isinstance(args.get("objective"), str):
-                        raise ValueError("execute_read_only_route requires all documented contract fields")
+                    required = {"objective", "capability_id", "allowed_providers", "arguments"}
+                    allowed = required | {"allow_network", "data_classification"}
+                    if not required.issubset(args) or set(args) - allowed or not isinstance(args.get("objective"), str):
+                        raise ValueError("execute_read_only_route requires objective, capability_id, allowed_providers, and arguments; only documented fields are accepted")
                     try:
                         contract = build_task_contract(
                             args["objective"], args.get("data_classification", "public"),
