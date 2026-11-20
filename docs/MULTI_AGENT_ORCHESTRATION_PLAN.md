@@ -183,3 +183,50 @@ Agreement between models is not itself proof of correctness.
 ## 13. Explicit non-goals
 
 This proposal does not create provider credentials, send prompts to Grok or Gemini, provision new services, add billing, change production, merge branches, or enable inference. It is an implementation blueprint and acceptance contract only.
+
+
+## 14. Verified packaged architecture — avoid duplicating existing components
+
+The repository's committed `FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip` was inspected directly. It already contains:
+
+- `components/FlyBrain-NOS/flybrain_os/model_hub.py`: `Provider`, `discover_providers()`, `task_plan()`, `ModelConsultation`, `check_provider()`, and concurrent provider calls.
+- `components/FlyBrain-NOS/tests/test_model_hub.py`: tests for provider discovery, role planning, parallel consultation, xAI request construction, Gemini-compatible provider discovery, local-only filtering, and metadata probes.
+- `components/URCAL/urcal/queue.py`: `InMemoryQueue` and a SQLite-backed leased queue with acknowledgement, retry, and dead-letter states.
+- `components/FlyBrain-NOS/docs/MULTI_MODEL_HUB.md`: the existing operator guide.
+
+**Implementation decision:** extend and harden the existing ModelHub + URCAL queue. Do not introduce a second model hub, a competing queue, or a second provider registry.
+
+### 14.1 What is already implemented
+
+- xAI is a distinct provider preset (`xai`, `https://api.x.ai/v1`) and is not the same as Groq (`groq`).
+- Gemini has its own OpenAI-compatible provider preset.
+- `ModelConsultation.consult()` can submit bounded concurrent calls and write provider/model/role/status/response/error records to a local SQLite database.
+- `URCAL.SQLiteQueue` supports durable local task claiming across local processes, lease expiry, acknowledgement, retry, and dead-lettering. Its documented delivery model is at-least-once, not exactly-once.
+- `task_plan()` can describe proposer, independent critic, domain reviewer, and synthesizer roles without contacting a model.
+
+These are code capabilities in the packaged archive. They do not establish that any provider is currently configured, reachable, free, or enabled in the deployed FlyBrain service.
+
+### 14.2 Gaps to resolve before live multi-agent execution
+
+1. **No actual result-to-synthesizer handoff:** the current consultation assigns roles based on provider-list position. Its synthesizer prompt is an independent analysis of the original task; it does not receive and synthesize the proposer and critic outputs. The returned plan is descriptive, not an executed dependency graph.
+2. **No hard zero-cost admission gate:** provider discovery and consultation do not enforce a trusted model-specific free-quota proof or a hard maximum spend of zero. A configured remote provider can incur charges.
+3. **Environment-variable credential model:** the packaged module reads credentials from process environment variables. A production integration must use the approved server-side Vault retrieval path and must never expose values to prompts, logs, browser clients, or task records.
+4. **External data transfer:** remote providers receive the task prompt. The `local_only` filter is useful but only restricts to providers explicitly marked local; it does not make remote calls safe or free.
+5. **Error persistence boundary:** `ModelConsultation.consult()` persists `str(exception)` for a failed caller. Production callers must normalize errors to allowlisted categories before persistence; never persist arbitrary exception text.
+6. **Ledger scope:** the consultation SQLite table stores consultation outputs, but it is not a full task ledger with immutable task envelopes, attempt identities, append-only transition events, reviewer decisions, and artifact hashes.
+7. **Queue scope:** URCAL's SQLite queue is a local durable queue, not a cross-host distributed broker. Its at-least-once delivery requires idempotent workers and explicit acknowledgement/nack handling.
+8. **Metadata probe limits:** `check_provider()` requests `/models`. A reachable model-list endpoint is not evidence of remaining free quota, effective request price, or successful generation.
+9. **Role assignment:** assigning roles by provider list index is not a reliable policy. Role-to-provider mapping must be explicit, validated, and recorded in each attempt.
+10. **Concurrency and timeouts:** the current consultation caps its worker pool at six, but production orchestration still needs a global budget, cancellation/deadline propagation, bounded retries, and idempotency.
+
+### 14.3 Recommended implementation sequence
+
+1. Add a no-network dry-run planner that validates explicit provider-role assignments and creates immutable task/attempt envelopes.
+2. Reuse URCAL's queue contract for local mock-only execution; do not enable remote providers.
+3. Add a structured result handoff: proposer output -> independent critic review -> synthesizer receives both outputs plus the original task and must preserve disagreements.
+4. Add a policy gate before provider discovery/execution. Default-deny all remote calls; require trusted, fresh, model-specific zero-cost evidence before any future external request.
+5. Replace arbitrary exception persistence with sanitized error codes and add output-size limits, idempotency, and append-only events.
+6. Add tests for state transitions, duplicate task IDs with conflicting payloads, expired leases, worker acknowledgement, role assignment, synthesis inputs, secret redaction, and zero-cost denial.
+7. Only after offline tests and a separate security review should any staging provider call be considered. The current project authorization still prohibits paid calls and does not permit inference activation by this plan.
+
+Until these gaps are addressed, the correct status is **multi-provider orchestration foundation exists; production-safe multi-agent workflow is not yet complete**.
