@@ -44,7 +44,7 @@ After the key is saved, the staging health response can confirm only whether a k
 
 ## Data policy
 
-Only public project research is eligible. Each protected request must explicitly set `allow_external_public_research: true`. The bridge sends the user's question and excerpts retrieved from the public FlyBrain repository after screening. The scanner detects common credentials, private keys, email addresses, and phone-like numbers; this is defense in depth, not a complete PII classifier. If screening finds a match or classification is uncertain, the request is rejected before external transfer.
+Only public project research is eligible. Each protected request must explicitly set both `question_is_public: true` (the authenticated operator's classification of the question) and `allow_external_public_research: true` (consent to transfer it). The server independently requires at least one excerpt from the pinned public release allowlist and rejects any source outside that allowlist. The bridge sends the question and those excerpts only after screening. The scanner detects common credentials, private keys, email addresses, and phone-like numbers; this is defense in depth, not a complete PII classifier. If trusted public context is absent or screening finds a match, the request is rejected before external transfer. Do not attest private, confidential, or personal material as public.
 
 No private files, account records, API keys, passwords, or other secrets may be sent to OpenRouter.
 
