@@ -129,3 +129,8 @@ Track these independently:
 ## 10. Current implementation boundary
 
 This document defines the intended strategic operating model. It does **not** mean the MSR loop, provider failover, memory feedback, or all security tests have already been implemented in the running FlyBrain service. Each capability must be implemented, tested, and reported separately.
+
+
+## 11. Complementary strategic doctrine: Sun Tzu
+
+The companion specification [SUN_TZU_STRATEGIC_DOCTRINE.md](SUN_TZU_STRATEGIC_DOCTRINE.md) translates selected principles from *The Art of War* into defensive, lawful, human-centred controls: situational awareness, evidence quality, resource preservation, timing, adaptation, conflict minimization, and acceptance tests. It complements MSR and does not authorize deception, coercion, unauthorized access, or production changes. It remains a design specification until implemented and tested.
