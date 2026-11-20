@@ -145,24 +145,29 @@ def test_browserless_adapter_requires_explicit_usage_opt_in(monkeypatch):
     assert browser_use_adapter.browserless_status()["configured"] is False
 
 
-def test_browserless_adapter_uses_allowlisted_host_and_never_returns_token(monkeypatch):
+def test_browserless_adapter_uses_exact_host_interception_and_never_returns_token(monkeypatch):
     import json
     from urllib.parse import parse_qs, urlparse
     from flybrain_os import browser_use_adapter
 
     class FakeResponse:
         status = 200
-        headers = {"Content-Type": "text/html; charset=utf-8"}
+        headers = {"Content-Type": "application/json"}
         def __enter__(self): return self
         def __exit__(self, *args): return False
         def read(self, size=-1):
-            return b"<html><head><title>Rendered</title></head><body><h1>Browserless page</h1></body></html>"
+            return json.dumps({"data": {
+                "html": "<html><head><title>Rendered</title></head><body><h1>Browserless page</h1></body></html>",
+                "finalUrl": "https://example.com/path",
+                "navigationError": None,
+            }}).encode("utf-8")
 
     captured = {}
     def fake_urlopen(request, timeout):
         captured["url"] = request.full_url
-        captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["body"] = request.data.decode("utf-8")
         captured["timeout"] = timeout
+        captured["content_type"] = request.headers.get("Content-type")
         return FakeResponse()
 
     monkeypatch.setenv("BROWSERLESS_TOKEN", "secret-test-token")
@@ -173,10 +178,13 @@ def test_browserless_adapter_uses_allowlisted_host_and_never_returns_token(monke
 
     result = browser_use_adapter.run_browserless_fetch("https://example.com/path", include_links=False)
     query = parse_qs(urlparse(captured["url"]).query)
+    assert urlparse(captured["url"]).path == "/function"
     assert query["token"] == ["secret-test-token"]
-    assert query["allowedDomains"] == ["example.com"]
-    assert captured["body"]["url"] == "https://example.com/path"
-    assert captured["timeout"] == 20
+    assert "setRequestInterception" in captured["body"]
+    assert "parsed.hostname.toLowerCase() === allowedHost" in captured["body"]
+    assert "example.com" in captured["body"]
+    assert captured["timeout"] == 25
+    assert captured["content_type"] == "application/javascript"
     assert result["status"] == "completed"
     assert result["provider"] == "browserless"
     assert "Browserless page" in result["content"]
