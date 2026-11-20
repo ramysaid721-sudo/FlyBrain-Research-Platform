@@ -1,21 +1,36 @@
-# تعليمات إعداد ونشر FlyBrain على Cloudflare — بيئة تجريبية
+# تعليمات إعداد ونشر FlyBrain على Cloudflare — بيئة Staging
 
 ## النطاق
-هذه نسخة تجريبية منفصلة باسم `flybrain-research-platform-staging`، ولا تستبدل Worker الإنتاج.
+هذه نسخة تجريبية مستقلة باسم `flybrain-research-platform-staging`، ولا تستبدل Worker الإنتاج ولا تعدّله.
 
-## إعداد الربط
-1. اربط مستودع GitHub بحساب Cloudflare.
-2. اختر الفرع `cloudflare-staging-deployment`.
-3. اجعل Root Directory هو `cloudflare-staging`.
-4. استخدم ملف الإعداد `wrangler.jsonc` الموجود داخل هذا المجلد.
-5. تأكد من ظهور Rate Limiting binding باسم `FLYBRAIN_PUBLIC_LIMITER`. يتضمن الملف معرّف namespace تجريبياً مستقلاً `26111702`؛ يجب التحقق من قبوله في حساب Cloudflare قبل النشر.
-6. اسم Worker المقترح هو `flybrain-research-platform-staging`.
+## مسار النشر المعتمد
+النشر يُدار من خلال ملف GitHub Actions التالي:
 
-## الاختبار
-بعد النشر، تحقق من:
-- `GET /health` وأن `rate_limiter_binding` تساوي `true`.
-- `POST /mcp` لطلبات initialize وtools/list.
-- تشغيل `bash scripts/smoke-test.sh https://YOUR-STAGING-WORKER.workers.dev`.
+`.github/workflows/deploy-flybrain-staging.yml`
+
+- عند تحديث ملفات `cloudflare-staging/**` على فرع `main`، يبدأ سير العمل نشر نسخة Staging تلقائياً.
+- يمكن تشغيل سير العمل يدوياً من GitHub Actions باستخدام `workflow_dispatch`.
+- يستخدم سير العمل أسرار GitHub Actions المسماة `CLOUDFLARE_API_TOKEN` و`CLOUDFLARE_ACCOUNT_ID`. لا تضع قيم هذه الأسرار في المستودع أو المحادثات.
+- لا تستخدم الفرع القديم `cloudflare-staging-deployment` كمصدر للنشر؛ فهو ليس مسار النشر المعتمد حالياً.
+
+## إعداد Worker
+- الاسم: `flybrain-research-platform-staging`.
+- ملف الإعداد: `cloudflare-staging/wrangler.jsonc`.
+- يجب أن يكون ربط تحديد المعدل باسم `FLYBRAIN_PUBLIC_LIMITER` متاحاً.
+- يجب أن يكون `namespace_id` نصاً رقمياً موجباً وفق مخطط Cloudflare Workers الحالي.
+
+## الاختبار بعد النشر
+بعد نجاح نشر Staging، نفّذ:
+
+```bash
+bash scripts/smoke-test.sh https://YOUR-STAGING-WORKER.workers.dev
+```
+
+وتحقق من:
+1. أن `GET /health` يعيد الحالة `ok` وأن `rate_limiter_binding` تساوي `true`.
+2. نجاح طلب MCP `initialize`.
+3. ظهور أداة `ask_flybrain` في `tools/list`.
+4. نجاح استدعاء قراءة تجريبي لـ `ask_flybrain`.
 
 ## الأمان
-لا تضع Cloudflare API Token أو كلمات مرور في المستودع. لا تغيّر Worker الإنتاج أو اسمه أو ملف إعداده. لا تنشر قبل مراجعة إعدادات البيئة التجريبية.
+لا تضع Cloudflare API Token أو كلمات المرور في المستودع أو المحادثة. لا تغيّر Worker الإنتاج أو اسمه أو إعداداته. جميع الخطوات هنا تخص Staging فقط.
