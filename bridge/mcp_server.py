@@ -42,7 +42,7 @@ class FlyBrainMCP:
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
