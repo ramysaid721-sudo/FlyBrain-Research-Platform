@@ -18,16 +18,17 @@ Protected FlyBrain /v1/ask
   -> OpenRouter model route: openrouter/free
 ```
 
-The API key must never enter the Vercel request body, GitHub source, or application logs. The Supabase Edge Function retrieves it from Vault using the service-role-only SQL function `public.flybrain_openrouter_secret(text)`.
+The API key must never enter the Vercel request body, GitHub source, or application logs. The Supabase Edge Function will retrieve it from Vault only when the protected inference path is implemented and enabled.
 
 ## Current deployment state
 
 - The deployed Supabase Edge Function is deliberately hard-disabled for inference.
-- Its GET health response reports whether the Vault key exists, but never returns the value.
+- Its public GET health response exposes service status only; it does not reveal whether a key exists or expose any secret.
 - Every POST request returns HTTP 503 with `external_data_transfer: false`; no OpenRouter request is made.
+- The disabled Edge Function does not read Vault or use the service-role key.
 - The Edge Function source is tracked at `supabase/functions/flybrain-openrouter/index.ts`.
 - `FLYBRAIN_OPENROUTER_ENABLED` remains false in the Vercel Preview environment.
-- The latest Staging commit has a READY Vercel Preview deployment. No Production deployment has been performed.
+- The latest successful Vercel Preview build is for the Staging application commit `f1966329686b4b15fc10b79d56518330c52297b4`. Later documentation/source-mirror commits have not received a fresh Preview build because of the Vercel build-rate limit. No Production deployment has been performed.
 
 ## Free-only controls in the client implementation
 
@@ -49,7 +50,7 @@ OpenRouter's Free plan does not include provider-side budget controls. The Free 
 4. Leave `flybrain_openrouter_bridge_token` unchanged. It is a separate machine-to-machine credential stored in Vault; its matching Vercel value is sensitive and Preview-branch scoped.
 5. Tell the operator only that the Vault key was saved. The key itself must remain private.
 
-The staging health response can confirm only whether a key is present. It never returns the value.
+Vault presence is checked through the privileged database path only. The public health endpoint does not disclose key presence.
 
 ## Data policy
 
@@ -63,5 +64,5 @@ No private files, account records, API keys, passwords, or other secrets may be 
 - Seven OpenRouter client unit tests passed in a local isolated Python test harness.
 - Ten Chat API unit tests passed in a local isolated Python test harness with the ModelHub provider module stubbed; these validate request gating and payload-screening behavior, not a full provider integration.
 - GitHub Actions was triggered and retried, but its jobs failed before allocating a runner (`runner_id = 0`, no steps); the hosted CI suite is therefore not verified.
-- The latest Staging commit has a READY Vercel Preview build, but this is not a live OpenRouter inference test.
+- The latest successful Staging application Preview build is not a live OpenRouter inference test.
 - No live inference request has been sent. The Edge Function POST path remains hard-disabled.
