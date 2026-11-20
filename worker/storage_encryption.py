@@ -169,6 +169,11 @@ def rewrap_data_key(
     )):
         raise StorageEncryptionError("invalid envelope or target KMS key metadata")
 
+    nonce = _decode(envelope.nonce_b64, "nonce")
+    if len(nonce) != 12:
+        raise StorageEncryptionError("invalid AES-GCM nonce length")
+    if len(_decode(envelope.ciphertext_b64, "ciphertext")) < 16:
+        raise StorageEncryptionError("invalid AES-GCM ciphertext length")
     wrapped_dek = _decode(envelope.wrapped_dek_b64, "wrapped DEK")
     try:
         dek = key_wrapper.unwrap_key(
