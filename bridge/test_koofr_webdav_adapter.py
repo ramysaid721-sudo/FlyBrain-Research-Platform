@@ -30,7 +30,9 @@ def configure(monkeypatch, write=False):
 def test_status_never_exposes_credentials(monkeypatch):
     configure(monkeypatch)
     result = adapter.koofr_webdav_status()
-    assert result["ready"] is True
+    assert result["configured"] is True
+    assert result["connection_verified"] is False
+    assert result["ready"] is False
     assert result["write_enabled"] is False
     assert "secret-app-password" not in str(result)
 
@@ -108,3 +110,28 @@ def test_write_rejects_redirects(monkeypatch):
     monkeypatch.setattr(adapter, "_open", fake_open)
     with pytest.raises(adapter.KoofrStorageError, match="redirect rejected"):
         adapter.koofr_webdav_write("a.txt", base64.b64encode(b"x").decode(), True)
+
+
+def test_read_only_probe_verifies_connection_without_writing(monkeypatch):
+    configure(monkeypatch)
+    captured = {}
+    def fake_open(request):
+        captured["method"] = request.get_method()
+        captured["url"] = request.full_url
+        captured["depth"] = request.get_header("Depth")
+        return FakeResponse(b"<multistatus/>", status=207)
+    monkeypatch.setattr(adapter, "_open", fake_open)
+    result = adapter.koofr_webdav_probe()
+    assert captured["method"] == "PROPFIND"
+    assert captured["url"] == adapter.KOOFR_WEBDAV_ENDPOINT
+    assert captured["depth"] == "0"
+    assert result["connection_verified"] is True
+
+
+def test_probe_rejects_authentication_failure(monkeypatch):
+    configure(monkeypatch)
+    def fake_open(request):
+        raise urllib.error.HTTPError(request.full_url, 401, "unauthorized", {}, None)
+    monkeypatch.setattr(adapter, "_open", fake_open)
+    with pytest.raises(adapter.KoofrStorageError, match="application-specific"):
+        adapter.koofr_webdav_probe()
