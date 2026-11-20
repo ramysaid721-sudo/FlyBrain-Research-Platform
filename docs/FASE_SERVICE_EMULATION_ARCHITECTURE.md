@@ -141,7 +141,7 @@ A first bounded storage adapter is now present:
 - `api/index.py` explicitly includes the new governance, planner, and Koofr modules in the Vercel cold-start overlay.
 - `bridge/test_koofr_webdav_adapter.py` and MCP tests cover credentials redaction, path traversal rejection, read/write gates, redirect rejection, and authenticated tool routing.
 
-Writes require both `FLYBRAIN_KOOFR_WEBDAV_ALLOW_WRITE=true` on the server and `confirm_write=true` on the individual call. Object size is capped at 1 MB. No delete, move, share, or synchronization operation is implemented. The adapter is not configured with credentials and has not yet completed a live Koofr connection or file round-trip.
+Writes require both `FLYBRAIN_KOOFR_WEBDAV_ALLOW_WRITE=true` on the server and `confirm_write=true` on the individual call. Object size is capped at 1 MB. Uploads use `If-None-Match: *` so existing objects are not overwritten; a conflict fails closed. No delete, move, share, or synchronization operation is implemented. The adapter is not configured with credentials and has not yet completed a live Koofr connection or file round-trip.
 
 **Deployment verification:** the latest Vercel Preview deployment loaded the new modules successfully and the live `/health` endpoint returned HTTP 200. Its response lists all four Koofr MCP tools and reports `configured=false`, `connection_verified=false`, and `write_enabled=false`. This confirms import and registration only; it does not prove Koofr connectivity or a storage round-trip. GitHub Actions unit tests have not yet been observed running for these commits.
 
