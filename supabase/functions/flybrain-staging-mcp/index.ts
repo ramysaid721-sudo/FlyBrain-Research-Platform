@@ -211,6 +211,24 @@ async function callServiceRpc(name: string, args: Record<string, unknown>) {
   if (!response.ok) throw new Error("task_backend_unavailable");
   return await response.json();
 }
+async function createCapabilityToken(): Promise<{token:string;hash:string}> {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  const token = btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+  const digest = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token));
+  const hash = Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  return {token,hash};
+}
+async function hashPresentedCapabilityToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function validCapabilityToken(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
+}
+
 function validateTaskSubmit(args: any) {
   if (!args || typeof args !== "object" || Array.isArray(args) ||
       Object.keys(args).some(k => !["query","page_size","idempotency_key","data_classification"].includes(k)) ||
@@ -369,7 +387,7 @@ Deno.serve(async (request: Request) => {
     return json({
       status: configured ? "ok" : "degraded",
       service: "flybrain-supabase-edge-staging",
-      version: "0.20.4-staging",
+      version: "0.20.5-staging",
       mode: "restricted_staging",
       async_task_queue: "enabled",
       task_worker: "enabled",
@@ -407,8 +425,8 @@ Deno.serve(async (request: Request) => {
     return json({ jsonrpc: "2.0", id: rpc.id, result: {
       protocolVersion: supported.includes(requested) ? requested : "2025-03-26",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "flybrain-research-bridge", version: "0.20.4-staging" },
-      instructions: "Use ask_flybrain for source-labelled FlyBrain-NOS and URCAL project evidence. Distinguish documented evidence from inference and hypotheses. This server provides read-only project retrieval, literature search, and restricted asynchronous Crossref tasks that can be submitted individually or in groups of up to ten. Group status includes bounded public bibliographic results. It does not write project files, execute arbitrary code, install packages, or provide interactive browser automation."
+      serverInfo: { name: "flybrain-research-bridge", version: "0.20.5-staging" },
+      instructions: "Use ask_flybrain for source-labelled FlyBrain-NOS and URCAL project evidence. Distinguish documented evidence from inference and hypotheses. This server provides read-only project retrieval, literature search, and restricted asynchronous Crossref tasks that can be submitted individually or in groups of up to ten. Task and group status require the one-time capability_token returned at submission; UUIDs alone do not grant access. Store that token securely because it cannot be recovered. The token is not returned again for an idempotent duplicate submission. It does not write project files, execute arbitrary code, install packages, or provide interactive browser automation."
     }});
   }
   if (rpc.method === "ping") return json({ jsonrpc: "2.0", id: rpc.id, result: {} });
@@ -463,8 +481,8 @@ Deno.serve(async (request: Request) => {
     {
       name: "task_status",
       title: "Check asynchronous task status",
-      description: "Retrieve the status and public bibliographic result of a task using its task_id returned by task_submit.",
-      inputSchema: { type: "object", properties: { task_id: { type: "string", format: "uuid" } }, required: ["task_id"], additionalProperties: false },
+      description: "Retrieve task status only with task_id and the one-time capability_token returned by task_submit. UUID alone is not authorization.",
+      inputSchema: { type: "object", properties: { task_id: { type: "string", format: "uuid" }, capability_token: { type: "string", minLength: 43, maxLength: 43 } }, required: ["task_id","capability_token"], additionalProperties: false },
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
     {
@@ -484,8 +502,8 @@ Deno.serve(async (request: Request) => {
     {
       name: "task_group_status",
       title: "Check asynchronous research task group",
-      description: "Retrieve aggregate group status and per-child task states using the group_id returned by task_group_submit.",
-      inputSchema: { type: "object", properties: { group_id: { type: "string", format: "uuid" } }, required: ["group_id"], additionalProperties: false },
+      description: "Retrieve group status and child results only with group_id and the one-time capability_token returned by task_group_submit. UUID alone is not authorization.",
+      inputSchema: { type: "object", properties: { group_id: { type: "string", format: "uuid" }, capability_token: { type: "string", minLength: 43, maxLength: 43 } }, required: ["group_id","capability_token"], additionalProperties: false },
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
     {
@@ -511,24 +529,32 @@ Deno.serve(async (request: Request) => {
     if (name === "task_submit") {
       try {
         const input = validateTaskSubmit(args);
+        const capability = await createCapabilityToken();
         const data = await callServiceRpc("flybrain_enqueue_task", {
           p_task_type: "research_search",
           p_payload: { query: input.query, page_size: input.page_size },
-          p_idempotency_key: input.idempotency_key
+          p_idempotency_key: input.idempotency_key,
+          p_access_token_hash: capability.hash
         });
-        return json({ jsonrpc:"2.0", id:rpc.id, result:{content:[{type:"text",text:JSON.stringify(data)}],structuredContent:data,isError:false} });
+        const response = data && data.duplicate === false
+          ? { ...data, capability_token: capability.token, capability_token_once: true }
+          : { ...data, capability_token_issued: false, capability_token_note: "This idempotent request already exists. The original capability token is not recoverable; submit with a new idempotency_key to create a new task and token." };
+        return json({ jsonrpc:"2.0", id:rpc.id, result:{content:[{type:"text",text:JSON.stringify(response)}],structuredContent:response,isError:false} });
       } catch (error) {
         return rpcError(rpc.id,-32602,error instanceof Error ? error.message : "Task submission failed");
       }
     }
     if (name === "task_status") {
       if (!args || typeof args !== "object" || Array.isArray(args) ||
-          Object.keys(args).length !== 1 || typeof args.task_id !== "string" ||
-          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(args.task_id)) {
-        return rpcError(rpc.id,-32602,"task_status requires a valid task_id UUID");
+          Object.keys(args).length !== 2 || typeof args.task_id !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(args.task_id) ||
+          !validCapabilityToken(args.capability_token)) {
+        return rpcError(rpc.id,-32602,"task_status requires task_id and its 43-character capability_token");
       }
       try {
-        const data = await callServiceRpc("flybrain_task_status",{p_task_id:args.task_id});
+        const tokenHash = await hashPresentedCapabilityToken(args.capability_token);
+        const data = await callServiceRpc("flybrain_task_status",{p_task_id:args.task_id,p_access_token_hash:tokenHash});
+        if (data === null) return rpcError(rpc.id,-32004,"Task not found or capability token invalid");
         return json({jsonrpc:"2.0",id:rpc.id,result:{content:[{type:"text",text:JSON.stringify(data)}],structuredContent:data,isError:false}});
       } catch {
         return rpcError(rpc.id,-32000,"Task status service unavailable");
@@ -537,24 +563,32 @@ Deno.serve(async (request: Request) => {
     if (name === "task_group_submit") {
       try {
         const input = validateTaskGroup(args);
+        const capability = await createCapabilityToken();
         const data = await callServiceRpc("flybrain_enqueue_task_group", {
           p_tasks: input.tasks,
           p_idempotency_key: input.idempotency_key,
-          p_data_classification: "public"
+          p_data_classification: "public",
+          p_access_token_hash: capability.hash
         });
-        return json({jsonrpc:"2.0",id:rpc.id,result:{content:[{type:"text",text:JSON.stringify(data)}],structuredContent:data,isError:false}});
+        const response = data && data.duplicate === false
+          ? { ...data, capability_token: capability.token, capability_token_once: true }
+          : { ...data, capability_token_issued: false, capability_token_note: "This idempotent group already exists. The original capability token is not recoverable; submit with a new idempotency_key to create a new group and token." };
+        return json({jsonrpc:"2.0",id:rpc.id,result:{content:[{type:"text",text:JSON.stringify(response)}],structuredContent:response,isError:false}});
       } catch (error) {
         return rpcError(rpc.id,-32602,error instanceof Error ? error.message : "Task group submission failed");
       }
     }
     if (name === "task_group_status") {
       if (!args || typeof args !== "object" || Array.isArray(args) ||
-          Object.keys(args).length !== 1 || typeof args.group_id !== "string" ||
-          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(args.group_id)) {
-        return rpcError(rpc.id,-32602,"task_group_status requires a valid group_id UUID");
+          Object.keys(args).length !== 2 || typeof args.group_id !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(args.group_id) ||
+          !validCapabilityToken(args.capability_token)) {
+        return rpcError(rpc.id,-32602,"task_group_status requires group_id and its 43-character capability_token");
       }
       try {
-        const data = await callServiceRpc("flybrain_task_group_status",{p_group_id:args.group_id});
+        const tokenHash = await hashPresentedCapabilityToken(args.capability_token);
+        const data = await callServiceRpc("flybrain_task_group_status",{p_group_id:args.group_id,p_access_token_hash:tokenHash});
+        if (data === null) return rpcError(rpc.id,-32004,"Task group not found or capability token invalid");
         return json({jsonrpc:"2.0",id:rpc.id,result:{content:[{type:"text",text:JSON.stringify(data)}],structuredContent:data,isError:false}});
       } catch {
         return rpcError(rpc.id,-32000,"Task group status service unavailable");
