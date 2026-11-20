@@ -14,8 +14,28 @@ const PUBLIC_QUERY_SENSITIVE_PATTERNS: RegExp[] = [
   /(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*\S+/i
 ];
 
+function queryVariants(query: string): string[] {
+  const variants = [query];
+  let current = query;
+  for (let i = 0; i < 2; i++) {
+    let decoded = current;
+    try {
+      decoded = decodeURIComponent(current);
+    } catch {
+      decoded = current.replace(/%([0-7][0-9a-f])/gi, (_match, hex: string) =>
+        String.fromCharCode(Number.parseInt(hex, 16)));
+    }
+    if (decoded === current) break;
+    variants.push(decoded);
+    current = decoded;
+  }
+  return variants;
+}
+
 export function assertPublicExternalQuery(query: string): void {
-  if (PUBLIC_QUERY_SENSITIVE_PATTERNS.some((pattern) => pattern.test(query))) {
+  if (queryVariants(query).some((variant) =>
+    PUBLIC_QUERY_SENSITIVE_PATTERNS.some((pattern) => pattern.test(variant))
+  )) {
     throw new Error("query_blocked_by_external_data_safety_policy");
   }
 }
