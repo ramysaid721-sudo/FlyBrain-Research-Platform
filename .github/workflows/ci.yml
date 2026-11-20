@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, develop, "feat/**"]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "gemini-mock-only-staging"]
   workflow_dispatch:
 
 permissions:
