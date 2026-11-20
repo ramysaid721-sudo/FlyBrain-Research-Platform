@@ -1,11 +1,7 @@
 version: 2.1
 
 # Independent, secret-free CI fallback for FlyBrain.
-# This pipeline validates the same release payload and bridge overlay as
-# the primary GitHub Actions workflow. No deployment or external secrets.
-orbs:
-  python: circleci/python@2.1.1
-
+# Mirrors the release validation path; no deployment or external secrets.
 parameters:
   python-version:
     type: string
