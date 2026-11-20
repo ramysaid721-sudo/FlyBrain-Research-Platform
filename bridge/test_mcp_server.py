@@ -55,6 +55,10 @@ def test_health_reports_http_research_and_interactive_browser_separately(tmp_pat
         "installed":False,"ready":False,"interactive_browser_ready":False,
         "web_search_ready":True,"web_fetch_ready":True,"provider":"ollama"
     })
+    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_status",lambda:{
+        "provider":"koofr_webdav","configured":False,"connection_verified":False,
+        "write_enabled":False,"ready":False,"credentials_exposed":False
+    })
     app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
     env={"REQUEST_METHOD":"GET","PATH_INFO":"/health","CONTENT_LENGTH":"0"}
     captured={}
@@ -65,6 +69,8 @@ def test_health_reports_http_research_and_interactive_browser_separately(tmp_pat
     assert payload["version"]=="0.16.0"
     assert payload["capabilities"]["public_web_search"] is True
     assert payload["capabilities"]["interactive_browser"] is False
+    assert payload["koofr_storage"]["configured"] is False
+    assert payload["koofr_storage"]["credentials_exposed"] is False
 
 
 def test_public_browser_search_tool_uses_http_adapter_without_token(tmp_path,monkeypatch):
