@@ -16,6 +16,8 @@ on:
     paths:
       - "worker/provider_registry.py"
       - "worker/test_provider_registry.py"
+      - "worker/model_data_policy.py"
+      - "worker/test_model_data_policy.py"
       - ".github/workflows/faco-provider-registry-tests.yml"
   workflow_dispatch:
 
