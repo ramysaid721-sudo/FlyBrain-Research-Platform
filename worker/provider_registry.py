@@ -147,6 +147,10 @@ def select_provider(
             reason = "quota_evidence_missing"
         elif offer.quota_evidence_age_seconds > requirements.max_quota_evidence_age_seconds:
             reason = "quota_evidence_stale"
+        elif offer.estimated_cost_usd != 0:
+            # FACO is currently free-only: a nonzero quote is rejected even
+            # when a caller supplies a positive task budget.
+            reason = "nonzero_cost"
         elif offer.estimated_cost_usd > requirements.max_cost_usd:
             reason = "cost_ceiling_exceeded"
         elif offer.active_jobs >= offer.max_parallelism:
