@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 TASK_RUNNER_DIAGNOSIS = "d3000000-0000-4000-8000-000000000001"
 TASK_CI_QUALIFICATION = "d3000000-0000-4000-8000-000000000002"
 TASK_CONTINUITY_PROOF = "d3000000-0000-4000-8000-000000000006"
+TASK_FULL_CONTINUITY = "d3000000-0000-4000-8000-000000000008"
 CONTINUITY_IDEMPOTENCY_KEY = "flybrain-continuity-proof-v1"
 GITHUB_REPO = "ramysaid721-sudo/FlyBrain-Research-Platform"
 KNOWN_FAILED_RUN_ID = 44707066740
@@ -319,6 +320,68 @@ def continuity_resume(execution_id: str, lease_token: str):
     }
 
 
+
+def full_continuity_qualification(execution_id: str, lease_token: str):
+    """Two-stage checkpoint test whose second stage is dispatched by Supabase Cron."""
+    checkpoints = control("resume", task_id=TASK_FULL_CONTINUITY) or []
+    phase_one = next(
+        (item for item in checkpoints if item.get("checkpoint_key") == "full-continuity-phase-1"),
+        None,
+    )
+    if phase_one is None:
+        saved = control(
+            "checkpoint",
+            execution_id=execution_id,
+            lease_token=lease_token,
+            checkpoint_key="full-continuity-phase-1",
+            payload={
+                "phase": "prepared_before_scheduler_recovery",
+                "execution_id": execution_id,
+                "expected_resume": "next independent Supabase Cron dispatch",
+            },
+        )
+        if not saved:
+            raise WorkerError("Full continuity phase-1 checkpoint was not persisted")
+        print(json.dumps({
+            "status": "intentional_interruption",
+            "task_id": TASK_FULL_CONTINUITY,
+            "checkpoint": "full-continuity-phase-1",
+            "execution_id": execution_id,
+        }, separators=(",", ":")))
+        return 75
+
+    prior_payload = phase_one.get("payload") or {}
+    resumed_from = prior_payload.get("execution_id")
+    if not resumed_from or resumed_from == execution_id:
+        raise WorkerError("Full continuity retry did not resume from a distinct prior execution")
+
+    saved = control(
+        "checkpoint",
+        execution_id=execution_id,
+        lease_token=lease_token,
+        checkpoint_key="full-continuity-phase-2",
+        payload={
+            "phase": "resumed_after_scheduler_lease_recovery",
+            "execution_id": execution_id,
+            "resumed_from_execution_id": resumed_from,
+            "scheduler_recovery": "verified_by_new_execution_after_lease_expiry",
+            "production_modified": False,
+        },
+    )
+    if not saved:
+        raise WorkerError("Full continuity phase-2 checkpoint was not persisted")
+    completed = control("complete", execution_id=execution_id, lease_token=lease_token)
+    if completed is not True:
+        raise WorkerError("Full continuity task completion was rejected")
+    return {
+        "continuity": "passed",
+        "resumed_from_execution_id": resumed_from,
+        "execution_id": execution_id,
+        "scheduler_recovery": True,
+        "production_modified": False,
+    }
+
+
 def main() -> int:
     execution_id = _env("FLYBRAIN_EXECUTION_ID")
     lease_token = _env("FLYBRAIN_LEASE_TOKEN")
@@ -327,6 +390,17 @@ def main() -> int:
         if not isinstance(task, dict):
             raise WorkerError("Claimed task payload is invalid")
         task_id = task.get("id")
+        if task_id == TASK_FULL_CONTINUITY:
+            evidence = full_continuity_qualification(execution_id, lease_token)
+            if evidence == 75:
+                return 75
+            print(json.dumps({
+                "status": "awaiting_verification",
+                "task_id": task_id,
+                "checkpoint": "full-continuity-phase-2",
+                **evidence,
+            }, separators=(",", ":")))
+            return 0
         if task_id == TASK_CONTINUITY_PROOF:
             evidence = continuity_resume(execution_id, lease_token)
             if evidence == 75:
