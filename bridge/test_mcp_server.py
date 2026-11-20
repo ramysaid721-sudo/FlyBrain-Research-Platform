@@ -301,3 +301,23 @@ def test_koofr_webdav_tools_are_authenticated_and_writes_are_explicit(tmp_path, 
     assert response["status"] == "200 OK"
     assert captured == {"key": "a.txt", "content": "aGVsbG8=", "confirm": True}
     assert body["result"]["structuredContent"]["size_bytes"] == 5
+
+
+
+def test_koofr_webdav_probe_is_authenticated_and_read_only(tmp_path, monkeypatch):
+    token = "z" * 40
+    captured = {"called": False}
+    def fake_probe():
+        captured["called"] = True
+        return {"status": "connected", "connection_verified": True, "http_status": 207}
+    monkeypatch.setattr("flybrain_os.koofr_webdav_adapter.koofr_webdav_probe", fake_probe)
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 53, "method": "tools/call",
+               "params": {"name": "koofr_webdav_probe", "arguments": {}}}
+    response, _ = call(app, request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    assert captured["called"] is False
+    response, body = call(app, request, token)
+    assert response["status"] == "200 OK"
+    assert body["result"]["structuredContent"]["connection_verified"] is True
+    assert captured["called"] is True
