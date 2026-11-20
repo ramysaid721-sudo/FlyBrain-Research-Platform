@@ -69,15 +69,15 @@ def test_unknown_external_provider_cost_is_not_assumed_free():
     assert plan["status"] == "no_eligible_route"
 
 
-def test_registry_does_not_claim_unwired_local_runtime_is_ready():
+def test_registry_reports_local_project_context_adapter_as_available():
     result = capability_registry()
     local = next(item for item in result["capabilities"]
                  if item["capability_id"] == "flybrain.project_context")
-    assert local["runtime_state"] == "not_ready_until_runtime_adapter_is_wired"
+    assert local["runtime_state"] == "adapter_available"
     contract = build_task_contract("Retrieve project context", "public", ["local"], False, 0.0)
     plan = plan_task_route(contract, "flybrain.project_context")
-    assert plan["routes"][0]["execution_ready"] is False
-    assert plan["routes"][0]["requires_runtime_verification"] is True
+    assert plan["routes"][0]["execution_ready"] is True
+    assert plan["routes"][0]["requires_runtime_verification"] is False
 
 
 def test_public_search_adapter_requires_explicit_public_network_and_is_read_only(monkeypatch):
@@ -106,3 +106,25 @@ def test_external_adapter_rejects_missing_network_permission():
     contract = build_task_contract("Search", "public", ["http_research"], False, 0.0)
     with pytest.raises(TaskContractError):
         execute_read_only_capability(contract, "web.public_search", {"query": "topic"})
+
+
+def test_local_project_context_adapter_runs_without_network(monkeypatch):
+    from flybrain_os import chat_api
+    from flybrain_os.capability_mesh import execute_read_only_capability
+
+    monkeypatch.setattr(chat_api, "retrieve_project_context",
+                        lambda question, limit=6: [{"source": "README.md", "excerpt": "Local evidence"}])
+    contract = build_task_contract("Find project architecture", "confidential", ["local"], False, 0.0)
+    result = execute_read_only_capability(contract, "flybrain.project_context", {"limit": 4})
+    assert result["status"] == "completed"
+    assert result["provider"] == "local"
+    assert result["data_classification"] == "confidential"
+    assert result["side_effects"] is False
+    assert result["result"]["sources"][0]["source"] == "README.md"
+
+
+def test_local_project_context_rejects_network_permission():
+    from flybrain_os.capability_mesh import execute_read_only_capability
+    contract = build_task_contract("Retrieve project context", "public", ["local"], True, 0.0)
+    with pytest.raises(TaskContractError):
+        execute_read_only_capability(contract, "flybrain.project_context", {"limit": 2})
