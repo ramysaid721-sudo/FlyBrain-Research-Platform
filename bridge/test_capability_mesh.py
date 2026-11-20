@@ -67,3 +67,14 @@ def test_unknown_external_provider_cost_is_not_assumed_free():
                                    ["modelhub"], True, 0.0)
     plan = plan_task_route(contract, "model.external_consultation")
     assert plan["status"] == "no_eligible_route"
+
+
+def test_registry_does_not_claim_unwired_local_runtime_is_ready():
+    result = capability_registry()
+    local = next(item for item in result["capabilities"]
+                 if item["capability_id"] == "flybrain.project_context")
+    assert local["runtime_state"] == "not_ready_until_runtime_adapter_is_wired"
+    contract = build_task_contract("Retrieve project context", "public", ["local"], False, 0.0)
+    plan = plan_task_route(contract, "flybrain.project_context")
+    assert plan["routes"][0]["execution_ready"] is False
+    assert plan["routes"][0]["requires_runtime_verification"] is True
