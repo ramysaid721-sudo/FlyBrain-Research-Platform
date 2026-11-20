@@ -122,13 +122,15 @@ Every transition records actor, evidence, timestamp, version, and rationale. A n
 
 ## 10. Staging implementation update
 
-The following bounded governance slice has been added:
+The following bounded governance and planning slice has been added:
 - Component review model and fail-closed evaluator in bridge/service_emulation_governance.py.
 - Authenticated MCP tool evaluate_component_review in bridge/mcp_server.py.
-- Unit tests in bridge/test_service_emulation_governance.py and an MCP exposure/authentication test in bridge/test_mcp_server.py.
+- Deterministic service-emulation planner in bridge/service_emulation_planner.py. It ranks only candidates with approved provenance/licence/terms/security evidence, operational verification, matching feature coverage, data classification, deployment mode, and known cost. Unknown-cost candidates fail closed; paid candidates require explicit allow_paid=true.
+- Authenticated MCP tool plan_service_emulation in bridge/mcp_server.py. It returns a candidate recommendation only; it does not install, execute, or activate a service.
+- Unit tests in bridge/test_service_emulation_governance.py and bridge/test_service_emulation_planner.py, plus MCP exposure/authentication tests in bridge/test_mcp_server.py.
 
 The evaluator checks recorded provenance, third-party source and licence identification, clean-room evidence, restricted-material declarations, patent escalation state, service terms, and security review. It returns eligibility for human approval, not an automatic legal approval. Conditional approvals remain blocked until conditions are explicitly enforced. It does not search patent registers or determine infringement.
 
 **Verification boundary:** files and MCP registration have been committed and re-fetched from staging. GitHub Actions execution is not yet verified; the repository's recent Actions failures were associated with account spending-limit blocks and unavailable job logs. Do not treat the tests as passed until a runner executes them. No production deployment or merge is authorized.
 
-**Remaining implementation boundary:** FASE service discovery, candidate scoring, provider-neutral adapters, USCL storage adapters, multi-cloud replication, and restore verification remain unimplemented. USCL remains design-only until a real backend adapter passes its acceptance tests. Existing capability-mesh routes do not constitute a general service factory or production-ready multi-cloud platform.
+**Remaining implementation boundary:** automated service discovery and candidate-source verification, a persistent registry, provider-neutral adapters, USCL storage adapters, multi-cloud replication, and restore verification remain unimplemented. The current planner accepts candidate evidence as input; it does not yet maintain or independently verify a catalogue. USCL remains design-only until a real backend adapter passes its acceptance tests. Existing capability-mesh routes do not constitute a general service factory or production-ready multi-cloud platform.
