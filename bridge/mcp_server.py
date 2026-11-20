@@ -9,7 +9,7 @@ from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, as
 from .capability_mesh import TaskContractError, capability_registry, build_task_contract, plan_task_route, execute_read_only_capability
 from .service_emulation_governance import evaluate_component_review
 from .service_emulation_planner import plan_service_emulation
-from .koofr_webdav_adapter import (KoofrStorageError, koofr_webdav_status, koofr_webdav_read, koofr_webdav_write)
+from .koofr_webdav_adapter import (KoofrStorageError, koofr_webdav_status, koofr_webdav_probe, koofr_webdav_read, koofr_webdav_write)
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -45,7 +45,7 @@ class FlyBrainMCP:
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route", "evaluate_component_review", "plan_service_emulation", "koofr_webdav_status", "koofr_webdav_read", "koofr_webdav_write"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route", "evaluate_component_review", "plan_service_emulation", "koofr_webdav_status", "koofr_webdav_probe", "koofr_webdav_read", "koofr_webdav_write"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
@@ -188,6 +188,10 @@ class FlyBrainMCP:
                      "description": "Report whether Koofr WebDAV credentials are configured and whether writes are enabled. Never returns credentials or contacts Koofr.",
                      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "koofr_webdav_probe", "title": "Verify Koofr WebDAV connection",
+                     "description": "Perform one read-only PROPFIND request to the fixed Koofr WebDAV endpoint. Requires configured application-specific credentials. Does not upload, modify, or delete data.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
                     {"name": "koofr_webdav_read", "title": "Read an object from Koofr",
                      "description": "Read one object from the fixed Koofr WebDAV endpoint. Requires configured application-specific credentials. Returns base64 content and metadata; no writes are performed.",
                      "inputSchema": {"type": "object", "properties": {
@@ -279,6 +283,14 @@ class FlyBrainMCP:
                     if args:
                         raise ValueError("koofr_webdav_status accepts no arguments")
                     return self.send(start, "200 OK", self._tool_result(mid, koofr_webdav_status()))
+                if name == "koofr_webdav_probe":
+                    if args:
+                        raise ValueError("koofr_webdav_probe accepts no arguments")
+                    try:
+                        data = koofr_webdav_probe()
+                    except KoofrStorageError as exc:
+                        return self.send(start, "200 OK", self._tool_result(mid, {"status": "error", "error": str(exc)}, True))
+                    return self.send(start, "200 OK", self._tool_result(mid, data))
                 if name == "koofr_webdav_read":
                     if set(args) != {"object_key"}:
                         raise ValueError("koofr_webdav_read requires only object_key")
