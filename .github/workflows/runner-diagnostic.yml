@@ -1,0 +1,42 @@
+name: Hosted Runner Allocation Diagnostic
+
+on:
+  push:
+    branches: ["openrouter-integration-staging"]
+    paths:
+      - ".github/workflows/runner-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flybrain-runner-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  standard-linux:
+    name: Standard hosted runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm runner allocation
+        run: |
+          echo "HOSTED_RUNNER_ALLOCATED=1"
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -a
+          python3 --version
+
+  slim-linux:
+    name: Slim hosted runner
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Confirm runner allocation
+        run: |
+          echo "SLIM_RUNNER_ALLOCATED=1"
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -a
+          python3 --version
