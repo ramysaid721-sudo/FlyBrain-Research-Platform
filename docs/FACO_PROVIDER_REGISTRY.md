@@ -13,7 +13,7 @@ A provider offer is eligible only when all of the following are explicitly true:
 - Provider is enabled and healthy; its circuit breaker is closed.
 - Free capacity is confirmed by an account/quota check.
 - Quota evidence must include an explicit age and be no older than the task's configured freshness window (default: 120 seconds). Missing or stale evidence is rejected.
-- Estimated cost is explicitly supplied and does not exceed the task ceiling. The default task ceiling is USD 0.
+- Estimated cost is explicitly supplied and must be exactly USD 0. A positive task budget never authorizes a paid provider in the current free-only FACO policy.
 - A concurrency slot is available.
 - Runtime, capability, data-class, network, region, and maximum-duration requirements are satisfied.
 
