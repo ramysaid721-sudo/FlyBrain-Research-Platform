@@ -5,14 +5,15 @@ or external LLM. Interactive browser control remains an optional Browser Use ext
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
 from html.parser import HTMLParser
 from ipaddress import ip_address, ip_address as _ip
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import parse_qs, quote_plus, unquote, urlencode, urljoin, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 class BrowserUseNotConfigured(RuntimeError):
     pass
@@ -322,11 +323,108 @@ def run_browser_search(query: str, max_results: int = 8) -> dict:
             "note": "Results are public-web search results; verify primary sources before relying on claims."}
 
 
+def browserless_status() -> dict:
+    """Report Browserless configuration without exposing credentials."""
+    token_present = bool(os.environ.get("BROWSERLESS_TOKEN"))
+    usage_enabled = os.environ.get("BROWSERLESS_ALLOW_USAGE", "").strip().lower() == "true"
+    endpoint = os.environ.get("BROWSERLESS_CONTENT_ENDPOINT", "https://production-sfo.browserless.io/content")
+    parsed = urlparse(endpoint)
+    endpoint_valid = (
+        parsed.scheme == "https" and bool(parsed.hostname)
+        and not parsed.username and not parsed.password
+        and (parsed.hostname == "browserless.io" or parsed.hostname.endswith(".browserless.io"))
+        and parsed.path.rstrip("/") == "/content"
+    )
+    return {
+        "configured": bool(token_present and usage_enabled and endpoint_valid),
+        "token_present": token_present,
+        "usage_enabled": usage_enabled,
+        "endpoint_valid": endpoint_valid,
+        "provider": "browserless",
+        "note": "Browserless usage may consume plan units. Calls remain disabled unless BROWSERLESS_ALLOW_USAGE=true is explicitly configured.",
+    }
+
+
+def run_browserless_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
+    """Fetch a public page through Browserless rendered Chromium, with strict opt-in."""
+    if output_format not in {"markdown", "text", "json"}:
+        raise ValueError("output_format must be markdown, text, or json")
+    if not isinstance(include_links, bool):
+        raise ValueError("include_links must be boolean")
+    target = _validate_url(url)
+    status = browserless_status()
+    if not status["configured"]:
+        raise BrowserUseNotConfigured(
+            "Browserless is not enabled. Configure BROWSERLESS_TOKEN and explicitly set BROWSERLESS_ALLOW_USAGE=true."
+        )
+    endpoint = os.environ.get(
+        "BROWSERLESS_CONTENT_ENDPOINT", "https://production-sfo.browserless.io/content"
+    ).rstrip("/")
+    token = os.environ["BROWSERLESS_TOKEN"]
+    hostname = urlparse(target).hostname
+    # Restrict the remote browser to the exact validated target host, including redirects/subresources.
+    query = urlencode({"token": token, "allowedDomains": hostname})
+    request = Request(
+        endpoint + "?" + query,
+        data=json.dumps({
+            "url": target,
+            "gotoOptions": {"waitUntil": "domcontentloaded", "timeout": 12000},
+            "bestAttempt": False,
+        }).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Cache-Control": "no-cache"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            if not 200 <= response.status < 300:
+                raise BrowserUseNotConfigured("Browserless returned a non-success HTTP status")
+            html = response.read(1_500_001)
+            if len(html) > 1_500_000:
+                raise ValueError("Browserless response exceeded the 1.5 MB extraction limit")
+            content_type = response.headers.get("Content-Type", "text/html")
+    except HTTPError as exc:
+        # Never include the request URL: it contains the API token.
+        raise BrowserUseNotConfigured(f"Browserless request failed with HTTP {exc.code}") from None
+    except URLError as exc:
+        raise BrowserUseNotConfigured(f"Browserless connection failed: {type(exc.reason).__name__}") from None
+    parser = _PageParser()
+    parser.feed(html.decode("utf-8", errors="replace"))
+    content = parser.page_text()
+    links = []
+    if include_links:
+        for item in parser.links[:100]:
+            raw = urljoin(target, item.get("href", "").strip())
+            if raw.startswith("https://"):
+                try:
+                    safe = _validate_url(raw)
+                except ValueError:
+                    continue
+                links.append({"text": " ".join(item.get("text", "").split())[:300], "url": safe})
+    return {
+        "status": "completed",
+        "url": target,
+        "title": parser.title.strip()[:500],
+        "description": parser.description,
+        "content_type": content_type,
+        "content": content[:30000],
+        "links": links,
+        "extraction_mode": "Browserless rendered Chromium",
+        "provider": "browserless",
+        "side_effects": False,
+        "content_is_untrusted": True,
+    }
+
+
 def run_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
     if output_format not in {"markdown", "text", "json"}:
         raise ValueError("output_format must be markdown, text, or json")
     if not isinstance(include_links, bool):
         raise ValueError("include_links must be boolean")
+    selected_provider = os.environ.get("FLYBRAIN_WEB_FETCH_PROVIDER", "http").strip().lower()
+    if selected_provider == "browserless":
+        return run_browserless_fetch(url, output_format, include_links)
+    if selected_provider != "http":
+        raise BrowserUseNotConfigured("Unsupported FLYBRAIN_WEB_FETCH_PROVIDER; choose http or browserless")
     final_url, content_type, body = _http_get(url, timeout=8, max_bytes=1_500_000)
     parser = _PageParser()
     parser.feed(body)
