@@ -14,6 +14,8 @@ from pathlib import Path
 from wsgiref.simple_server import make_server
 from . import model_hub
 from .model_data_scanner import assert_external_model_payload_safe
+from .model_data_policy import ExternalModelDataPolicyError
+from .openrouter_client import OpenRouterBridgeError, generate_public_project_answer
 
 ModelConsultation = model_hub.ModelConsultation
 
@@ -133,6 +135,60 @@ class FlyBrainChatApp:
                 context = retrieve_project_context(question.strip())
                 context_text = "\n\n".join(x["source"] + ": " + x["excerpt"] for x in context)
                 enriched_question = question.strip() + ("\n\nProject evidence context:\n" + context_text if context_text else "")
+                if os.environ.get("FLYBRAIN_OPENROUTER_ENABLED", "false").strip().lower() == "true":
+                    if data.get("allow_external_public_research") is not True:
+                        return self._response(start_response, "403 Forbidden", {
+                            "error": "explicit_public_research_consent_required",
+                            "external_data_transfer": False,
+                        })
+                    serialized_public_payload = json.dumps(
+                        {"question": question.strip(), "context": context_text},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                    try:
+                        assert_external_model_payload_safe(
+                            serialized_payload=serialized_public_payload,
+                            data_class="public",
+                            contains_secrets=False,
+                            contains_personal_data=False,
+                        )
+                        external_result = generate_public_project_answer(
+                            question.strip(),
+                            context_text,
+                            timeout=min(int(timeout), 45),
+                        )
+                    except ExternalModelDataPolicyError:
+                        return self._response(start_response, "422 Unprocessable Entity", {
+                            "error": "external_data_policy_blocked",
+                            "external_data_transfer": False,
+                        })
+                    except OpenRouterBridgeError as exc:
+                        status = "503 Service Unavailable" if exc.status in (401, 403, 429, 503) else "502 Bad Gateway"
+                        return self._response(start_response, status, {
+                            "error": exc.code,
+                            "external_data_transfer": False,
+                        })
+                    return self._response(start_response, "200 OK", {
+                        "status": "completed",
+                        "answer_candidates": [{
+                            "provider": "openrouter",
+                            "model": external_result.get("served_model") or "openrouter/free",
+                            "role": "primary",
+                            "answer": external_result["answer"],
+                        }],
+                        "research_context": context,
+                        "workflow": ["public_context_retrieval", "server_side_screening", "openrouter_free_route"],
+                        "execution_policy": {
+                            "provider": "openrouter",
+                            "model_route": "openrouter/free",
+                            "max_cost_usd": 0,
+                            "data_classification": "public",
+                        },
+                        "external_data_transfer": True,
+                        "external_data_scope": "public_project_research",
+                        "usage": external_result.get("usage"),
+                    })
                 providers = model_hub.discover_providers()
                 caller = None
                 if providers:
