@@ -12,7 +12,36 @@ import os
 import re
 from pathlib import Path
 from wsgiref.simple_server import make_server
-from .model_hub import ModelConsultation
+from functools import partial
+from . import model_hub
+from .model_data_scanner import assert_external_model_payload_safe
+
+ModelConsultation = model_hub.ModelConsultation
+
+
+def _guarded_post_chat(
+    provider, prompt, *, timeout=45, data_class, contains_secrets, contains_personal_data
+):
+    """Screen the exact serialized request immediately before network transfer."""
+    def checked_opener(request, timeout=45):
+        body = getattr(request, "data", None)
+        if not isinstance(body, (bytes, bytearray)):
+            raise ValueError("serialized provider payload is unavailable")
+        try:
+            serialized_payload = body.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError("serialized provider payload is not UTF-8") from None
+        assert_external_model_payload_safe(
+            serialized_payload=serialized_payload,
+            data_class=data_class,
+            contains_secrets=contains_secrets,
+            contains_personal_data=contains_personal_data,
+        )
+        return model_hub.urllib.request.urlopen(request, timeout=timeout)
+
+    return model_hub._post_chat(
+        provider, prompt, timeout=timeout, opener=checked_opener
+    )
 
 def retrieve_project_context(question: str, release_root: str | Path | None = None, limit: int = 6) -> list[dict]:
     """Return ranked, source-labelled project excerpts without external APIs."""
@@ -105,7 +134,39 @@ class FlyBrainChatApp:
                 context = retrieve_project_context(question.strip())
                 context_text = "\n\n".join(x["source"] + ": " + x["excerpt"] for x in context)
                 enriched_question = question.strip() + ("\n\nProject evidence context:\n" + context_text if context_text else "")
-                result = self._consultation.consult(enriched_question, timeout=int(timeout))
+                providers = model_hub.discover_providers()
+                caller = None
+                if providers:
+                    attestation = data.get("public_data_attestation")
+                    if not isinstance(attestation, dict):
+                        return self._response(start_response, "400 Bad Request", {
+                            "error": "public_data_attestation_required"
+                        })
+                    data_class = attestation.get("classification")
+                    contains_secrets = attestation.get("contains_secrets")
+                    contains_personal_data = attestation.get("contains_personal_data")
+                    if (
+                        data_class != "public"
+                        or type(contains_secrets) is not bool
+                        or contains_secrets is not False
+                        or type(contains_personal_data) is not bool
+                        or contains_personal_data is not False
+                    ):
+                        return self._response(start_response, "400 Bad Request", {
+                            "error": "public_data_attestation_rejected"
+                        })
+                    caller = partial(
+                        _guarded_post_chat,
+                        data_class=data_class,
+                        contains_secrets=contains_secrets,
+                        contains_personal_data=contains_personal_data,
+                    )
+                result = self._consultation.consult(
+                    enriched_question,
+                    timeout=int(timeout),
+                    providers=providers,
+                    caller=caller,
+                )
                 if result["status"] == "no_providers_configured":
                     return self._response(start_response, "200 OK", {
                         "status": "context_only",

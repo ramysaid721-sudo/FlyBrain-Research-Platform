@@ -14,7 +14,7 @@ The additional `worker.model_data_scanner.assert_external_model_payload_safe` he
 
 **Important limitation:** content screening is heuristic defense-in-depth, not a complete secret/PII detector. It can miss novel, encoded, fragmented, or obfuscated sensitive content and can flag benign public examples. A clean scan does not prove that a payload is safe or public. The caller must still use trusted provenance/classification and must never send credentials, API keys, tokens, private source code, personal information, or operational secrets to an external model.
 
-No model provider is activated by this policy change, and neither guard is yet wired into a live inference path. Do not enable inference until the guard is called on the final serialized payload immediately before the provider request, with no later payload mutation.
+No model provider is activated by this policy change. The Staging Chat bridge now routes configured provider calls through the public-only policy and content scanner using the exact serialized HTTP request body immediately before network transfer; the request must include an explicit public-data attestation with both sensitive-data flags set to false. This attestation is supplied by the authenticated caller and is not independent cryptographic provenance. The scanner remains heuristic defense-in-depth, not proof that a payload is public or safe. Keep inference disabled until source provenance is independently established and the guard has passed deployment-level tests; no payload mutation is permitted after screening.
 
 The dedicated policy and scanner tests are run with the provider-registry tests:
 

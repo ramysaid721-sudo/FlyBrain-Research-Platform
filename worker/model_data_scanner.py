@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from worker.model_data_policy import (
+from .model_data_policy import (
     ExternalModelDataPolicyError,
     assert_external_model_input_allowed,
 )

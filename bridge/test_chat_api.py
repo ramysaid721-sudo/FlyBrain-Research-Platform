@@ -1,5 +1,7 @@
 import io
 import json
+from types import SimpleNamespace
+import pytest
 from flybrain_os.chat_api import FlyBrainChatApp
 
 def invoke(app, method="GET", path="/health", payload=None, token=None):
@@ -51,3 +53,67 @@ def test_ask_returns_gateway_error_when_all_providers_fail(tmp_path, monkeypatch
     response, body = invoke(app, "POST", "/v1/ask", {"question": "What is a connectome?"}, token)
     assert response["status"] == "502 Bad Gateway"
     assert body["status"] == "all_providers_failed"
+
+
+def test_ask_requires_public_attestation_when_provider_is_configured(tmp_path, monkeypatch):
+    token = "x" * 40
+    called = []
+    monkeypatch.setattr(
+        "flybrain_os.chat_api.model_hub.discover_providers",
+        lambda: [SimpleNamespace(provider_id="test", model="test-model")],
+    )
+    monkeypatch.setattr(
+        "flybrain_os.chat_api.ModelConsultation.consult",
+        lambda *args, **kwargs: called.append((args, kwargs)),
+    )
+    app = FlyBrainChatApp(token, tmp_path / "ledger.sqlite3")
+    response, body = invoke(app, "POST", "/v1/ask", {"question": "public question"}, token)
+    assert response["status"] == "400 Bad Request"
+    assert body["error"] == "public_data_attestation_required"
+    assert called == []
+
+
+def test_guard_scans_exact_serialized_payload_before_network(tmp_path, monkeypatch):
+    import flybrain_os.chat_api as chat_api
+    network_calls = []
+
+    def fake_post(provider, prompt, *, timeout, opener):
+        request = SimpleNamespace(data=b'{"model":"test-model","input":"public information"}')
+        return opener(request, timeout=timeout)
+
+    monkeypatch.setattr(chat_api.model_hub, "_post_chat", fake_post)
+    monkeypatch.setattr(
+        chat_api.model_hub.urllib.request,
+        "urlopen",
+        lambda request, timeout: network_calls.append(request) or "sent",
+    )
+    provider = SimpleNamespace(provider_id="test", model="test-model")
+    result = chat_api._guarded_post_chat(
+        provider, "public information", timeout=5,
+        data_class="public", contains_secrets=False, contains_personal_data=False,
+    )
+    assert result == "sent"
+    assert len(network_calls) == 1
+
+
+def test_guard_blocks_sensitive_payload_before_network(monkeypatch):
+    import flybrain_os.chat_api as chat_api
+    network_calls = []
+
+    def fake_post(provider, prompt, *, timeout, opener):
+        request = SimpleNamespace(data=b'{"api_key":"synthetic-secret-value"}')
+        return opener(request, timeout=timeout)
+
+    monkeypatch.setattr(chat_api.model_hub, "_post_chat", fake_post)
+    monkeypatch.setattr(
+        chat_api.model_hub.urllib.request,
+        "urlopen",
+        lambda request, timeout: network_calls.append(request) or "sent",
+    )
+    provider = SimpleNamespace(provider_id="test", model="test-model")
+    with pytest.raises(ValueError):
+        chat_api._guarded_post_chat(
+            provider, "public information", timeout=5,
+            data_class="public", contains_secrets=False, contains_personal_data=False,
+        )
+    assert network_calls == []
