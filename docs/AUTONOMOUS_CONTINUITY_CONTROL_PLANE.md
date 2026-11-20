@@ -55,11 +55,19 @@ A task orchestrator can continue deterministic jobs without an LLM. Autonomous r
 6. Add model-backed planning/repair only after the model endpoint, data policy, and cost ceiling are explicitly established.
 7. Run end-to-end continuity tests: close the ChatGPT session, interrupt a worker, restart the scheduler, and verify that the mission resumes without duplicate side effects.
 
-## Current verified state
-- GitHub staging workflow exists at .github/workflows/autonomous-cloud-factory.yml.
-- The workflow's first run failed before any step; GitHub reported runner_id=0, empty runner_name, and an empty steps array.
-- Therefore, the build/test sequence has not run and no test pass is claimed.
-- Vercel Preview deployment and health checks have succeeded previously, but that proves only the existing service build/health path, not the control plane.
-- An existing Supabase Free project (`forge-ai-db`, ref `zjhzfjzadrpsbfphxgjw`) already contains an RLS-enabled mission schema: organizations, projects, tasks, executions, checkpoints, verification_evidence, approval_requests, and audit_events. Security advisors returned no lints at inspection time.
-- A FlyBrain / URCAL mission project and eight durable tasks were seeded in that database. The first task is READY; seven are PLANNED or WAITING_APPROVAL. Two failed GitHub runner attempts and their external-check evidence were recorded. The model endpoint task is WAITING_APPROVAL because provider credentials and a hard cost ceiling are not configured.
-- The database has no pg_cron, pg_net, or pgmq extensions enabled at inspection time, and no Edge Functions deployed. Thus the scheduler, watchdog, worker adapter, and external model-backed repair loop are not operational yet.
+## Current verified state — 2026-11-20
+
+- GitHub staging workflow exists at `.github/workflows/autonomous-cloud-factory.yml` and now partitions the five targeted test files into three parallel shards (maximum parallelism 3).
+- GitHub expanded all three matrix jobs, but hosted-runner allocation failed before the first workflow step: runner_id=0 or null, empty runner_name, and zero steps. A targeted rerun reproduced the same infrastructure failure. No pytest failure is inferred from these runs.
+- The same three test shards were executed concurrently in the existing Vercel staging Sandbox on Python 3.14.4: 35 + 22 + 17 = 74 passed, zero failed. Bridge overlay and compileall passed. Python 3.12 compatibility remains unverified.
+- Supabase Free project `forge-ai-db` (ref `zjhzfjzadrpsbfphxgjw`) has the RLS-enabled mission schema, deployed `flybrain-control` Edge Function (version 5), Vault-backed worker credentials, pg_net, and an active pg_cron dispatcher.
+- Cron job `flybrain-worker-dispatch-every-five-minutes` is active at `*/5 * * * *`. The staging Vercel trigger URL in Vault points to the latest verified staging Preview deployment.
+- The Vercel worker uses a persistent named Sandbox snapshot, but individual sessions stop after bounded work. The sandbox is not a continuously running VM.
+- Task 6 (checkpoint persistence and idempotent side-effect prevention) is VERIFIED. Independent ledger inspection confirmed one side-effect row across an interrupted execution and its resumed retry.
+- Task 8 (scheduled continuity qualification) is VERIFIED. A first worker saved phase 1 and stopped; after lease expiry, Supabase Cron dispatched a second execution, which resumed from the durable checkpoint and completed phase 2. The second dispatch required no ChatGPT tool call. The ChatGPT conversation itself was not closed, and a scheduler-process restart was not simulated.
+- Task 9 (external release bridge qualification) remains AWAITING_VERIFICATION because Python 3.12 compatibility has not been independently confirmed.
+- Task 7 (autonomous reasoning model) remains WAITING_APPROVAL because no model endpoint, credentials, data-sharing policy, and spending ceiling have been approved.
+- Other foundational tasks 1–5 are VERIFIED.
+- Latest deployments were staging Preview deployments only. Production was not modified.
+- Additional compute providers are not yet active: Railway has zero projects; Render has a workspace but no workspace was selected for operations; no Cloudflare connector is available in this execution environment; TinyFish has a negative wallet balance and is not used.
+- The system is therefore capable of scheduled, durable worker recovery for the tested task path, but it is not yet a fully qualified multi-cloud worker pool or a model-backed autonomous engineering system.
