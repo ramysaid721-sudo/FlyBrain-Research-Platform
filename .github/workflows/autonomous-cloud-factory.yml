@@ -20,9 +20,26 @@ concurrency:
 
 jobs:
   build-test-evidence:
-    name: Build, test and package evidence
+    name: Build, test and package evidence (${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - shard: bridge
+            tests: |
+              components/FlyBrain-NOS/tests/test_capability_mesh.py
+              components/FlyBrain-NOS/tests/test_mcp_server.py
+          - shard: governance
+            tests: |
+              components/FlyBrain-NOS/tests/test_service_emulation_governance.py
+              components/FlyBrain-NOS/tests/test_service_emulation_planner.py
+          - shard: adapters
+            tests: |
+              components/FlyBrain-NOS/tests/test_koofr_webdav_adapter.py
+
     steps:
       - name: Checkout staging source
         uses: actions/checkout@v4
@@ -49,22 +66,20 @@ jobs:
         id: compile
         run: python -m compileall -q bridge scripts
 
-      - name: Run bridge, governance, planner and storage tests
+      - name: Run test shard
         id: tests
         working-directory: .release/FlyBrain_Research_Platform_v0.14.0
+        env:
+          TEST_FILES: ${{ matrix.tests }}
         run: |
-          python -m pytest -q \
-            components/FlyBrain-NOS/tests/test_capability_mesh.py \
-            components/FlyBrain-NOS/tests/test_mcp_server.py \
-            components/FlyBrain-NOS/tests/test_service_emulation_governance.py \
-            components/FlyBrain-NOS/tests/test_service_emulation_planner.py \
-            components/FlyBrain-NOS/tests/test_koofr_webdav_adapter.py
+          python -m pytest -q $TEST_FILES
 
       - name: Write execution evidence
         if: always()
         env:
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
           TEST_OUTCOME: ${{ steps.tests.outcome }}
+          TEST_SHARD: ${{ matrix.shard }}
           COMMIT_SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -77,7 +92,8 @@ jobs:
           test_outcome = os.getenv("TEST_OUTCOME", "not_run")
           payload = {
               "factory": "flybrain-autonomous-cloud-factory",
-              "schema_version": 1,
+              "schema_version": 2,
+              "shard": os.environ["TEST_SHARD"],
               "commit": os.environ["COMMIT_SHA"],
               "run_id": os.environ["RUN_ID"],
               "run_attempt": os.environ["RUN_ATTEMPT"],
@@ -97,7 +113,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: flybrain-factory-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          name: flybrain-factory-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: factory-evidence/execution-report.json
           if-no-files-found: error
           retention-days: 14
