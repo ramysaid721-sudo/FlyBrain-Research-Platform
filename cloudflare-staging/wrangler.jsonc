@@ -8,7 +8,7 @@
   "ratelimits": [
     {
       "name": "FLYBRAIN_PUBLIC_LIMITER",
-      "namespace_id": 26111702,
+      "namespace_id": "26111702",
       "simple": { "limit": 30, "period": 60 }
     }
   ]
