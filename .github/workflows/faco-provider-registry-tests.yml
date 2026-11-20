@@ -1,0 +1,46 @@
+name: FACO Provider Registry Tests
+
+on:
+  push:
+    branches:
+      - faco-provider-registry-prototype
+    paths:
+      - "worker/provider_registry.py"
+      - "worker/test_provider_registry.py"
+      - ".github/workflows/faco-provider-registry-tests.yml"
+  pull_request:
+    branches:
+      - flybrain-browser-worker-staging
+    paths:
+      - "worker/provider_registry.py"
+      - "worker/test_provider_registry.py"
+      - ".github/workflows/faco-provider-registry-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: faco-provider-registry-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Python ${{ matrix.python-version }} unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Checkout staging prototype
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile provider registry
+        run: python -m compileall -q worker/provider_registry.py worker/test_provider_registry.py
+      - name: Run provider registry tests
+        run: python -m unittest worker.test_provider_registry -v
