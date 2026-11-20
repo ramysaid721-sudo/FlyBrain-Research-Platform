@@ -85,4 +85,4 @@ If a concern is raised, stop new distribution or deployment, preserve provenance
 9. Automated scans are treated as signals, not legal determinations.
 10. Production promotion requires completed compliance review and separate deployment authorization.
 
-**Current status:** policy specification only. No automated legal clearance, patent search, or licence approval is asserted.
+**Current status:** the policy specification and a fail-closed engineering evidence evaluator are present on staging. The evaluator does not perform legal clearance, patent searches, or grant licence approval; human review and qualified counsel remain necessary where indicated.
