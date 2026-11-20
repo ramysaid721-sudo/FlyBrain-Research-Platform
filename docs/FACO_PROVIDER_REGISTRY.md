@@ -8,14 +8,18 @@ Introduce a deterministic provider-selection boundary before adding additional c
 
 ## External reasoning-model data boundary
 
-FlyBrain's external reasoning-model policy is **public data only**. Before an external inference request is constructed, the caller must pass the input through `worker.model_data_policy.assert_external_model_input_allowed` with an exact `data_class="public"` classification and explicit false values for both `contains_secrets` and `contains_personal_data`. Unknown, internal, private, confidential, secret-bearing, personal-data-bearing, or unverified inputs fail closed.
+FlyBrain's external reasoning-model policy is **public data only**. Before an external inference request is constructed, the caller must enforce `worker.model_data_policy.assert_external_model_input_allowed` with an exact `data_class="public"` classification and explicit false values for both `contains_secrets` and `contains_personal_data`.
 
-This guard validates caller-supplied classification flags; it does **not** inspect, scan, redact, or prove the contents of a payload. It must therefore be used only after a trusted classification step. Never pass credentials, API keys, tokens, private source code, personal information, or operational secrets to an external model. No model provider is activated by this policy change, and this guard is not yet wired into a live inference path.
+The additional `worker.model_data_scanner.assert_external_model_payload_safe` helper applies that metadata check to the exact serialized payload and screens for common high-confidence secret formats, credential assignments, email addresses, and phone-like numbers. It returns rule identifiers only and never returns matched values. Unknown, internal, private, confidential, secret-bearing, personal-data-bearing, or unverified inputs fail closed.
 
-The dedicated policy tests are run with the provider-registry tests:
+**Important limitation:** content screening is heuristic defense-in-depth, not a complete secret/PII detector. It can miss novel, encoded, fragmented, or obfuscated sensitive content and can flag benign public examples. A clean scan does not prove that a payload is safe or public. The caller must still use trusted provenance/classification and must never send credentials, API keys, tokens, private source code, personal information, or operational secrets to an external model.
+
+No model provider is activated by this policy change, and neither guard is yet wired into a live inference path. Do not enable inference until the guard is called on the final serialized payload immediately before the provider request, with no later payload mutation.
+
+The dedicated policy and scanner tests are run with the provider-registry tests:
 
 ```bash
-python -m unittest worker.test_provider_registry worker.test_model_data_policy -v
+python -m unittest worker.test_provider_registry worker.test_model_data_policy worker.test_model_data_scanner -v
 ```
 
 ## Fail-closed admission rules
@@ -48,7 +52,7 @@ Therefore this prototype does not claim multi-cloud execution. It establishes th
 3. Persist the selected provider and its quota evidence with the execution record.
 4. Add transactional claim/dispatch integration with lease fencing and idempotency.
 5. Test fallback after provider outage, capacity exhaustion, and stale quota data.
-6. Wire the public-only model-data guard into the external inference request path before enabling any model.
+6. Wire the public-only metadata guard and content scanner into the final external inference request path before enabling any model.
 7. Enable one additional provider only after its free allowance, data policy, network scope, and shutdown behavior are verified.
 
 ## Local tests
@@ -56,7 +60,7 @@ Therefore this prototype does not claim multi-cloud execution. It establishes th
 Run from the repository root:
 
 ```bash
-python -m unittest worker.test_provider_registry worker.test_model_data_policy -v
+python -m unittest worker.test_provider_registry worker.test_model_data_policy worker.test_model_data_scanner -v
 ```
 
-The provider-registry suite covers zero-cost admission, missing/stale quota evidence, circuit breaker, health, concurrency, strict input validation, runtime and data-class constraints, network/region requirements, and deterministic ordering. The model-data-policy suite verifies public-only admission and rejection of sensitive or unverified classifications.
+The provider-registry suite covers zero-cost admission, missing/stale quota evidence, circuit breaker, health, concurrency, strict input validation, runtime and data-class constraints, network/region requirements, and deterministic ordering. The model-data-policy suite verifies public-only admission and rejection of sensitive or unverified classifications. The scanner suite covers representative secret formats and conservative PII patterns.
