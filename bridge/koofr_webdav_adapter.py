@@ -7,8 +7,8 @@ disabled unless both server configuration and per-call confirmation are present.
 from __future__ import annotations
 
 import base64
+import binascii
 import os
-import re
 import ssl
 import urllib.error
 import urllib.request
@@ -110,7 +110,7 @@ def koofr_webdav_write(object_key: str, content_base64: str, confirm_write: bool
         raise ValueError("content_base64 is invalid or exceeds the configured write limit")
     try:
         content = base64.b64decode(content_base64, validate=True)
-    except (ValueError, base64.binascii.Error):
+    except (ValueError, binascii.Error):
         raise ValueError("content_base64 must be valid base64") from None
     if len(content) > MAX_OBJECT_BYTES:
         raise ValueError("object exceeds the configured write limit")
