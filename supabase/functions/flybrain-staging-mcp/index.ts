@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { unzipSync } from "npm:fflate@0.8.2";
+import { assertPublicExternalQuery } from "../_shared/public_query_safety.ts";
 
 const REPOSITORY = "ramysaid721-sudo/FlyBrain-Research-Platform";
 const BRANCH = "592ec1d36f1f97ef7c49598f3028f3dd87aac90c";
@@ -129,19 +130,6 @@ async function retrieve(question: string) {
 }
 
 
-
-const PUBLIC_QUERY_SENSITIVE_PATTERNS = [
-  /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i,
-  /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
-  /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/,
-  /\bsk-[A-Za-z0-9_-]{20,}\b/,
-  /(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*\S+/i
-];
-function assertPublicExternalQuery(query: string) {
-  if (PUBLIC_QUERY_SENSITIVE_PATTERNS.some(pattern => pattern.test(query))) {
-    throw new Error("query_blocked_by_external_data_safety_policy");
-  }
-}
 
 async function researchSearch(args: any) {
   if (!args || typeof args !== "object" || Array.isArray(args) ||
