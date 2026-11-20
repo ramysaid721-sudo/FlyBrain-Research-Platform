@@ -15,7 +15,7 @@ Deno.test("blocks personal data and common credential formats", () => {
     ["sk-", "abcdefghijklmnopqrstuvwxyz123456"].join(""),
     ["sk_live_", "abcdefghijklmnop123456"].join(""),
     ["rk_test_", "abcdefghijklmnop123456"].join(""),
-    ["AIza", "012345678901234567890123456789012345"].join(""),
+    ["AIza", "01234567890123456789012345678901234"].join(""),
     ["AKIA", "1234567890ABCDEF"].join(""),
     ["ASIA", "1234567890ABCDEF"].join(""),
     ["xoxb", "1234567890", "abcdefghijklmnop"].join("-"),
