@@ -186,3 +186,21 @@ Recommended sequence:
 8. connect ARIS through the restricted evidence profile and validate against a small public-record dataset.
 
 No production deployment, external account creation, paid resource provisioning, or permission expansion is authorized by this specification.
+
+
+## Staging implementation update — 2026-11-20
+
+The first bounded capability-mesh slice has now been added to the staging branch:
+
+- A typed capability registry and versioned task contract are implemented in `bridge/capability_mesh.py`.
+- Route planning revalidates caller-supplied contracts, enforces a zero-cost ceiling, requires explicit network permission, and rejects unknown provider pricing.
+- A local project-context adapter calls the existing source-labelled `retrieve_project_context` function and keeps the operation local.
+- Public web search and page extraction are wired through the existing SSRF-hardened HTTP adapter. These external routes accept only `public` data, require explicit `http_research` provider permission, and are read-only.
+- MCP exposes registry, planning, and bounded execution tools. Retrieved web/page content is labelled untrusted and returned with adapter provenance.
+- The focused test suite now contains 15 capability-mesh tests and 13 MCP tests, including private-data isolation and public-route permission checks.
+
+### Verified boundary
+
+These files and tool registrations are present on the staging branch. GitHub Actions currently reports failed runs without step summaries, and the job-log endpoint returns `BlobNotFound`; therefore test execution and CI success are **not yet verified**. A local clone attempt was blocked because the execution environment could not resolve `github.com`. The production Vercel deployment was separately checked and remains `READY`, with no runtime errors reported in the last 24 hours. No production deployment or merge was performed.
+
+The current adapter slice is not a general multi-model federation engine. External model consultation remains disabled until provider identity, pricing, quotas, privacy terms, and live health checks can be verified. Persistent queues, scheduled workers, automated skill promotion, and ARIS runtime ingestion remain future implementation work.
