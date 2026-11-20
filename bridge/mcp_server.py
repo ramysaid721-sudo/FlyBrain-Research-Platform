@@ -40,6 +40,7 @@ class FlyBrainMCP:
         if path in {"/", "/health"} and method == "GET":
             from .browser_use_adapter import browser_use_status
             browser = browser_use_status()
+            koofr = koofr_webdav_status()
             return self.send(start, "200 OK", {
                 "status": "ok",
                 "service": "flybrain-mcp",
@@ -54,7 +55,8 @@ class FlyBrainMCP:
                     "interactive_browser": browser.get("interactive_browser_ready", False),
                     "persistent_browser_profiles": False
                 },
-                "browser_status": browser
+                "browser_status": browser,
+                "koofr_storage": koofr
             })
         if path != "/mcp":
             return self.app(env, start)
