@@ -111,6 +111,6 @@ A security model or agent may review only this public specification and syntheti
 ## Follow-up CI observation (2026-11-20)
 
 - The latest pull-request-triggered workflow run observed after envelope hardening was `44729887765`.
-- Both Python matrix jobs completed with `failure`, but the jobs endpoint returned empty step lists and log downloads returned `BlobNotFound`.
+- Both Python matrix jobs completed with `failure`, `runner_id=0`, an empty `runner_name`, and empty step lists; log downloads returned `BlobNotFound`. This confirms no runner was assigned and no test step ran.
 - Therefore the hosted run still provides no evidence that Python setup, dependency installation, compilation, or unit tests actually started. It must not be reported as a code-test failure or a passing CI run.
 - The current storage-encryption test module contains 20 test methods. No new local execution result is claimed for this expanded set.
