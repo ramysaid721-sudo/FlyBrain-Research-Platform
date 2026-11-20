@@ -18,6 +18,8 @@ from urllib.request import Request, urlopen
 
 TASK_RUNNER_DIAGNOSIS = "d3000000-0000-4000-8000-000000000001"
 TASK_CI_QUALIFICATION = "d3000000-0000-4000-8000-000000000002"
+TASK_CONTINUITY_PROOF = "d3000000-0000-4000-8000-000000000006"
+CONTINUITY_IDEMPOTENCY_KEY = "flybrain-continuity-proof-v1"
 GITHUB_REPO = "ramysaid721-sudo/FlyBrain-Research-Platform"
 KNOWN_FAILED_RUN_ID = 44707066740
 TEST_REPORT_URL = (
@@ -239,6 +241,84 @@ def qualify_ci_runner() -> dict:
     }
 
 
+def continuity_resume(execution_id: str, lease_token: str):
+    task_id = TASK_CONTINUITY_PROOF
+    checkpoints = control("resume", task_id=task_id) or []
+    phase_one = next(
+        (item for item in checkpoints if item.get("checkpoint_key") == "continuity-phase-1"),
+        None,
+    )
+    side_effect = control(
+        "side_effect",
+        task_id=task_id,
+        idempotency_key=CONTINUITY_IDEMPOTENCY_KEY,
+        payload={"effect": "staging-continuity-marker", "purpose": "idempotency-proof"},
+    )
+    if not isinstance(side_effect, dict) or side_effect.get("count") != 1:
+        raise WorkerError("Idempotent side-effect count was not exactly one")
+
+    if phase_one is None:
+        if side_effect.get("inserted") is not True:
+            raise WorkerError("First continuity pass did not create its marker")
+        saved = control(
+            "checkpoint",
+            execution_id=execution_id,
+            lease_token=lease_token,
+            checkpoint_key="continuity-phase-1",
+            payload={
+                "phase": "prepared_before_interruption",
+                "execution_id": execution_id,
+                "side_effect_id": side_effect.get("side_effect_id"),
+                "side_effect_count": side_effect.get("count"),
+                "idempotency_key": CONTINUITY_IDEMPOTENCY_KEY,
+            },
+        )
+        if not saved:
+            raise WorkerError("First continuity checkpoint was not persisted")
+        print(json.dumps({
+            "status": "intentional_interruption",
+            "task_id": task_id,
+            "checkpoint": "continuity-phase-1",
+            "side_effect_count": side_effect.get("count"),
+        }, separators=(",", ":")))
+        return 75
+
+    if side_effect.get("inserted") is not False:
+        raise WorkerError("Retry inserted a duplicate side effect")
+    prior_payload = phase_one.get("payload") or {}
+    resumed_from = prior_payload.get("execution_id")
+    if not resumed_from:
+        raise WorkerError("Prior checkpoint does not identify its source execution")
+
+    saved = control(
+        "checkpoint",
+        execution_id=execution_id,
+        lease_token=lease_token,
+        checkpoint_key="continuity-phase-2",
+        payload={
+            "phase": "resumed_after_lease_recovery",
+            "execution_id": execution_id,
+            "resumed_from_execution_id": resumed_from,
+            "side_effect_id": side_effect.get("side_effect_id"),
+            "side_effect_count": side_effect.get("count"),
+            "duplicate_prevented": True,
+            "idempotency_key": CONTINUITY_IDEMPOTENCY_KEY,
+        },
+    )
+    if not saved:
+        raise WorkerError("Resume checkpoint was not persisted")
+    completed = control("complete", execution_id=execution_id, lease_token=lease_token)
+    if completed is not True:
+        raise WorkerError("Continuity task completion was rejected")
+    return {
+        "continuity": "passed",
+        "resumed_from_execution_id": resumed_from,
+        "execution_id": execution_id,
+        "side_effect_count": side_effect.get("count"),
+        "duplicate_prevented": True,
+    }
+
+
 def main() -> int:
     execution_id = _env("FLYBRAIN_EXECUTION_ID")
     lease_token = _env("FLYBRAIN_LEASE_TOKEN")
@@ -247,6 +327,18 @@ def main() -> int:
         if not isinstance(task, dict):
             raise WorkerError("Claimed task payload is invalid")
         task_id = task.get("id")
+        if task_id == TASK_CONTINUITY_PROOF:
+            evidence = continuity_resume(execution_id, lease_token)
+            if evidence == 75:
+                return 75
+            print(json.dumps({
+                "status": "awaiting_verification",
+                "task_id": task_id,
+                "checkpoint": "continuity-phase-2",
+                **evidence,
+            }, separators=(",", ":")))
+            return 0
+
         control(
             "heartbeat",
             execution_id=execution_id,
