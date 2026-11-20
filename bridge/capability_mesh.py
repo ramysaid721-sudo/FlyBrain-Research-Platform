@@ -28,7 +28,7 @@ _CAPABILITIES = (
     Capability(
         "flybrain.project_context", "local", "Retrieve source-labelled local project context",
         ("retrieve_project_context",), ("public", "internal", "confidential"),
-        False, 0.0, "not_ready_until_runtime_adapter_is_wired", True,
+        False, 0.0, "adapter_available", True,
     ),
     Capability(
         "web.public_search", "http_research", "Search public HTTPS sources",
@@ -174,15 +174,38 @@ def execute_read_only_capability(contract: dict[str, Any], capability_id: str, a
     )
     if contract.get("side_effects_allowed") is not False:
         raise TaskContractError("Side effects are disabled")
+    capability = next((item for item in _CAPABILITIES if item.capability_id == capability_id), None)
+    if capability is None or not capability.read_only:
+        raise TaskContractError("Capability is not an approved read-only adapter")
+    if capability.estimated_cost_usd is None or capability.estimated_cost_usd > validated["max_cost_usd"]:
+        raise TaskContractError("Capability cost is unknown or exceeds the approved budget")
+    if capability_id == "flybrain.project_context":
+        if capability.provider != "local" or validated["allow_network"] or "local" not in validated["allowed_providers"]:
+            raise TaskContractError("Local project retrieval requires local-only routing with network disabled")
+        if validated["data_classification"] == "restricted":
+            raise TaskContractError("Restricted data requires a separately verified hardened enclave")
+        if set(arguments) - {"limit"}:
+            raise TaskContractError("Unexpected local project-context argument")
+        limit = arguments.get("limit", 6)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10:
+            raise TaskContractError("limit must be an integer from 1 to 10")
+        from .chat_api import retrieve_project_context
+        result = {"status": "completed", "sources": retrieve_project_context(validated["objective"], limit=limit)}
+        return {
+            "status": "completed", "capability_id": capability_id, "provider": "local",
+            "data_classification": validated["data_classification"],
+            "side_effects": False, "execution_started": True,
+            "provenance": {"adapter": "flybrain.chat_api.retrieve_project_context",
+                           "method": "local source-labelled repository retrieval",
+                           "content_is_untrusted": True},
+            "result": result,
+        }
     if validated["data_classification"] != "public":
         raise TaskContractError("External adapters accept public data only")
     if not validated["allow_network"] or "http_research" not in validated["allowed_providers"]:
         raise TaskContractError("Explicit public-network permission and http_research provider are required")
-    capability = next((item for item in _CAPABILITIES if item.capability_id == capability_id), None)
-    if capability is None or not capability.read_only or capability.provider != "http_research":
-        raise TaskContractError("Capability is not an approved read-only public-web adapter")
-    if capability.estimated_cost_usd is None or capability.estimated_cost_usd > validated["max_cost_usd"]:
-        raise TaskContractError("Capability cost is unknown or exceeds the approved budget")
+    if capability.provider != "http_research":
+        raise TaskContractError("Only the local retrieval and approved public-web adapters are executable")
     from .browser_use_adapter import run_browser_fetch, run_browser_search
     if capability_id == "web.public_search":
         if set(arguments) - {"query", "max_results"}:
