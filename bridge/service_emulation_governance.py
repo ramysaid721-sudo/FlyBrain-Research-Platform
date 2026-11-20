@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 import re
+from urllib.parse import urlsplit
 
 REVIEW_STATES = {
     "unreviewed", "in_review", "approved", "approved_with_conditions",
@@ -96,13 +97,15 @@ def evaluate_component_review(record: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("intended_use and jurisdiction must be non-empty")
 
     if component_type != "original":
-        if not _nonempty(record.get("source_url")):
+        source_url = record.get("source_url")
+        if not _nonempty(source_url):
             raise ValueError("third-party components require a source_url")
-        if not _nonempty(record.get("licence_id")):
-            raise ValueError("third-party components require a licence_id; unknown is not approval")
-    if component_type in {"open_source", "licensed_software", "dataset", "model", "font_asset", "media_asset"}:
-        if record["licence_review_status"] not in LICENCE_APPROVAL_STATES:
-            pass
+        parsed_source = urlsplit(source_url)
+        if parsed_source.scheme != "https" or not parsed_source.netloc:
+            raise ValueError("third-party source_url must be an HTTPS URL")
+        licence_id = record.get("licence_id")
+        if not _nonempty(licence_id) or licence_id.strip().upper() in {"UNKNOWN", "NOASSERTION", "UNLICENSED"}:
+            raise ValueError("third-party components require an identified licence; unknown is not approval")
 
     review = ComponentReview(
         component_id=component_id,
@@ -128,6 +131,8 @@ def evaluate_component_review(record: dict[str, Any]) -> dict[str, Any]:
         blockers.append("source provenance is not verified")
     if review.component_type != "original" and review.licence_review_status not in LICENCE_APPROVAL_STATES:
         blockers.append("third-party licence review is not approved")
+    if review.component_type != "original" and review.licence_review_status == "approved_with_conditions":
+        blockers.append("licence approval conditions must be explicitly enforced before activation")
     if review.clean_room_required and not review.clean_room_spec_approved:
         blockers.append("clean-room specification has not been independently approved")
     if review.restricted_material_accessed:
