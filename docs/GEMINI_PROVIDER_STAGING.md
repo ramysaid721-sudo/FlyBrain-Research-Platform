@@ -74,3 +74,25 @@ This document does not implement a transport adapter or activate Gemini. A later
 ## Human setup boundary
 
 A project owner must complete Google account sign-in and create/authorize any API credential through Google's official interface. The key must be stored directly in the approved secret vault; it must not be pasted into chat or committed to the repository. If a free-tier key cannot be obtained without a payment method or paid commitment, stop and leave the provider disabled.
+
+
+## Public pricing and quota verification — 2026-11-20
+
+The official Gemini Developer API pricing page was reviewed on 2026-11-20:
+
+- The Free tier is limited to selected models; free eligibility must be checked for the exact model and API feature, not inferred from the existence of an API key.
+- Where the official pricing table marks standard input and output as free for a model, that does not make every tool or feature free. Grounding, caching, batch, priority, computer-use, and other capabilities have separate availability and/or pricing conditions.
+- Google states that content submitted under the Free tier may be used to improve its products. Only public, non-sensitive test content is therefore permitted by this staging plan.
+- The account-specific rate limits and remaining quota must be read from the owner's AI Studio project usage/limits view. A chart for Antigravity or another agent product is not evidence of Gemini Developer API quota.
+- Paid-tier activation requires Cloud Billing setup and a payment method. This project explicitly prohibits that path.
+
+Official references:
+- https://ai.google.dev/gemini-api/docs/pricing
+- https://ai.google.dev/gemini-api/docs/rate-limits
+- https://aistudio.google.com/docs/get-started
+
+### Current admission decision
+
+**DENY / NOT READY.** The Vault secret exists, but this repository review has not established the account-specific Gemini model quota, the exact model's free-tier availability for this project, or a trusted machine-readable zero-cost admission signal. Do not send a live API request, do not enable either provider flag, and do not configure paid billing. The Antigravity limits screenshot must not be reused as Gemini quota evidence.
+
+This decision is intentionally fail-closed. A future implementation may proceed with mock-only adapter tests while inference remains disabled; live staging admission requires a separate review of the exact model, project quota, billing state, and data-use constraints.
