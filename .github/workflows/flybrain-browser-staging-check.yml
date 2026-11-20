@@ -29,6 +29,8 @@ jobs:
           node-version: 22
       - name: Install pinned Wrangler dependency
         run: npm install --no-audit --no-fund
+      - name: Run browser session security tests
+        run: npm test
       - name: Check JavaScript syntax
         run: npm run check
       - name: Validate Wrangler bundle without deploying
