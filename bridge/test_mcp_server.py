@@ -103,3 +103,33 @@ def test_root_path_is_a_public_health_check(tmp_path,monkeypatch):
     assert captured["status"]=="200 OK"
     assert payload["service"]=="flybrain-mcp"
     assert payload["version"]=="0.16.0"
+
+
+def test_capability_registry_is_exposed_without_execution(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    response, body = call(app, {"jsonrpc": "2.0", "id": 20, "method": "tools/list"})
+    names = {tool["name"] for tool in body["result"]["tools"]}
+    assert {"capability_registry", "plan_task_route"} <= names
+    response, body = call(app, {"jsonrpc": "2.0", "id": 21, "method": "tools/call",
+                                "params": {"name": "capability_registry", "arguments": {}}}, "")
+    assert response["status"] == "200 OK"
+    assert body["result"]["structuredContent"]["execution_enabled"] is False
+
+
+def test_confidential_task_route_is_forced_to_local(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 22, "method": "tools/call",
+               "params": {"name": "plan_task_route", "arguments": {
+                   "objective": "Review confidential project notes",
+                   "data_classification": "confidential",
+                   "allowed_providers": ["local", "modelhub", "http_research"],
+                   "allow_network": True, "max_cost_usd": 0}}}
+    response, body = call(app, request, "")
+    plan = body["result"]["structuredContent"]
+    assert response["status"] == "200 OK"
+    assert plan["status"] == "route_planned"
+    assert plan["contract"]["allowed_providers"] == ["local"]
+    assert plan["contract"]["allow_network"] is False
+    assert plan["execution_started"] is False
