@@ -230,3 +230,25 @@ These are code capabilities in the packaged archive. They do not establish that 
 7. Only after offline tests and a separate security review should any staging provider call be considered. The current project authorization still prohibits paid calls and does not permit inference activation by this plan.
 
 Until these gaps are addressed, the correct status is **multi-provider orchestration foundation exists; production-safe multi-agent workflow is not yet complete**.
+
+
+## 15. Existing collaboration ledger and deployed bridge boundary
+
+Further inspection of the same packaged release and the current repository overlay confirms two additional integration points:
+
+- `flybrain_os/collaboration.py` implements a local SQLite collaboration message ledger with canonical JSON, SHA-256 payload checksums, JSONL import/export, duplicate handling, and explicit review outcomes (`accepted`, `rejected`, `deferred`). Imported payloads are inert and are not executed.
+- `flybrain_os/cli.py` exposes `collab-send`, `collab-export`, `collab-import`, `collab-stats`, `collab-review`, `model-task-plan`, `model-consult`, and `model-provider-check`.
+- The current repository's Vercel `api/index.py` extracts the pinned v0.14.0 archive and overlays the bridge modules. The bridge `chat_api.py` imports the packaged `ModelConsultation`; therefore a configured provider in the Vercel process environment can receive the submitted question.
+- The documented Vercel ledger path defaults to `/tmp/flybrain-chat.sqlite3`. That filesystem is ephemeral and is not durable shared task history.
+- The MCP tool list in the current bridge does not expose a dedicated multi-agent task/ledger management interface. The packaged CLI commands are not automatically exposed as remote MCP tools.
+
+### Deployment implications
+
+1. The existing local ModelHub and collaboration ledger are not equivalent to a durable, remotely accessible FlyBrain task orchestrator.
+2. Do not assume that a secret stored in Supabase Vault is automatically available to the Vercel process. The current bridge's provider adapter reads named environment variables; a reviewed server-side Vault integration is required before those provider presets can use Vault-held secrets.
+3. Do not copy provider keys from Vault into Vercel environment variables as a shortcut. The intended design is a least-privilege server-side secret retrieval path with no secret-value logging.
+4. Before enabling any remote model, inspect the deployed runtime's effective provider configuration without revealing secret values. If no provider is configured, the correct response remains context-only.
+5. A future durable shared task ledger must live behind authenticated server-side access controls and must not rely on Vercel's temporary `/tmp` filesystem.
+6. The existing collaboration ledger can inform the message-envelope and review model, but its peer IDs (`nrc`, `flybrain-nos`) and local file-based JSONL exchange are not yet a live multi-provider agent bus.
+
+**Revised architecture decision:** keep the existing ModelHub as the provider execution layer; reuse the URCAL queue contract for bounded local/staging jobs; adapt the collaboration ledger's checksums and explicit reviews for task artifacts; add only the missing orchestration and policy components. Do not create another provider registry or duplicate the consultation engine.
