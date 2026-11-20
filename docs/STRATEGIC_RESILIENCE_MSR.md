@@ -134,3 +134,12 @@ This document defines the intended strategic operating model. It does **not** me
 ## 11. Complementary strategic doctrine: Sun Tzu
 
 The companion specification [SUN_TZU_STRATEGIC_DOCTRINE.md](SUN_TZU_STRATEGIC_DOCTRINE.md) translates selected principles from *The Art of War* into defensive, lawful, human-centred controls: situational awareness, evidence quality, resource preservation, timing, adaptation, conflict minimization, and acceptance tests. It complements MSR and does not authorize deception, coercion, unauthorized access, or production changes. It remains a design specification until implemented and tested.
+
+
+## Browser-session allowlist binding update — 2026-11-20
+
+The staging Browser Worker now binds each acquired browser session to its original hostname allowlist using a short-lived HMAC-signed session token. The token carries the underlying Browser Run session identifier, the validated hostname patterns, and an expiry timestamp. Subsequent navigation verifies the signature and expiry, then validates the requested URL against the signed original allowlist before opening a CDP connection. Snapshot, click, type, keypress, screenshot, and close operations resolve the signed token to the underlying session identifier.
+
+This adds a local defense-in-depth check instead of relying solely on Cloudflare Browser Run guardrails to preserve the initial allowlist. The worker uses the existing `FLYBRAIN_BROWSER_API_TOKEN` as the HMAC key; changing that secret invalidates outstanding session tokens. The token is a bearer credential and must be handled as sensitive session material.
+
+Four Node built-in tests cover token round-trip, tamper rejection, expiry, wildcard/exact host validation, credential-bearing URL rejection, and rejection of navigation outside the signed allowlist before Browser Run access. These tests are committed but have not yet run in GitHub Actions because GitHub reports an account billing/spending-limit block before job startup. A local Node check of the token-signing and URL-validation primitives passed; this is not a substitute for the full worker test suite or a Cloudflare live-session test.
