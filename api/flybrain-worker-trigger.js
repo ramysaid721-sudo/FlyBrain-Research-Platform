@@ -17,7 +17,9 @@ async function control(token, payload) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok !== true) {
-    throw new Error(`Control plane ${payload.action} failed: HTTP ${response.status}`);
+    const error = new Error(`Control plane ${payload.action} failed: HTTP ${response.status}`);
+    error.statusCode = response.status;
+    throw error;
   }
   return data.result;
 }
@@ -134,7 +136,7 @@ async function handler(req, res) {
     if (!completed) {
       await failClaim(token, executionId, leaseToken, error && error.message ? error.message : error);
     }
-    return res.status(500).json({
+    return res.status(error && error.statusCode === 401 ? 401 : 500).json({
       ok: false,
       error: "worker_dispatch_failed",
       detail: String(error && error.message ? error.message : error).slice(0, 500),
