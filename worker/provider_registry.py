@@ -50,6 +50,7 @@ class TaskRequirements:
     max_cost_usd: float = 0.0
     network_required: bool = False
     region: Optional[str] = None
+    max_quota_evidence_age_seconds: int = 120
 
     def __post_init__(self) -> None:
         _require_text(self.runtime, "runtime")
@@ -60,6 +61,7 @@ class TaskRequirements:
         _require_bool(self.network_required, "network_required")
         if self.region is not None:
             _require_text(self.region, "region")
+        _require_int(self.max_quota_evidence_age_seconds, "max_quota_evidence_age_seconds", minimum=1)
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,7 @@ class ProviderOffer:
     priority: int = 100
     healthy: bool = True
     circuit_open: bool = False
+    quota_evidence_age_seconds: Optional[int] = None
 
     def __post_init__(self) -> None:
         _require_text(self.name, "name")
@@ -102,6 +105,8 @@ class ProviderOffer:
         _require_cost(self.estimated_cost_usd, "estimated_cost_usd")
         if self.region is not None:
             _require_text(self.region, "region")
+        if self.quota_evidence_age_seconds is not None:
+            _require_int(self.quota_evidence_age_seconds, "quota_evidence_age_seconds", minimum=0)
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,10 @@ def select_provider(
             reason = "circuit_open"
         elif not offer.free_capacity_confirmed:
             reason = "free_capacity_unconfirmed"
+        elif offer.quota_evidence_age_seconds is None:
+            reason = "quota_evidence_missing"
+        elif offer.quota_evidence_age_seconds > requirements.max_quota_evidence_age_seconds:
+            reason = "quota_evidence_stale"
         elif offer.estimated_cost_usd > requirements.max_cost_usd:
             reason = "cost_ceiling_exceeded"
         elif offer.active_jobs >= offer.max_parallelism:
