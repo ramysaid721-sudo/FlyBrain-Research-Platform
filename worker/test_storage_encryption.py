@@ -183,6 +183,25 @@ class StorageEncryptionTests(unittest.TestCase):
             )
 
 
+
+    def test_decrypt_rejects_unsupported_envelope_algorithm(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        malformed = EncryptedEnvelope(**{
+            **envelope.__dict__,
+            "algorithm": "AES-128-GCM",
+        })
+        with self.assertRaises(StorageEncryptionError):
+            self._decrypt(malformed)
+
+    def test_decrypt_rejects_missing_kek_metadata(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        malformed = EncryptedEnvelope(**{
+            **envelope.__dict__,
+            "kek_version": "",
+        })
+        with self.assertRaises(StorageEncryptionError):
+            self._decrypt(malformed)
+
     def test_rewrap_rejects_invalid_target_key_metadata(self):
         envelope = encrypt_bytes(b"fixture", **self.kwargs)
         for key_id, key_version in (("", "v2"), ("test-kek", "")):
