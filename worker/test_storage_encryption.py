@@ -127,5 +127,69 @@ class StorageEncryptionTests(unittest.TestCase):
             EncryptedEnvelope.from_json('{"format":"flybrain-aead-envelope-v1"}')
 
 
+
+    def test_invalid_nonce_length_is_rejected(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        malformed = EncryptedEnvelope(**{
+            **envelope.__dict__,
+            "nonce_b64": base64.b64encode(b"short").decode("ascii"),
+        })
+        with self.assertRaises(StorageEncryptionError):
+            self._decrypt(malformed)
+
+    def test_malformed_wrapped_dek_fails_closed(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        malformed = EncryptedEnvelope(**{
+            **envelope.__dict__,
+            "wrapped_dek_b64": base64.b64encode(b"x").decode("ascii"),
+        })
+        with self.assertRaises(StorageEncryptionError):
+            self._decrypt(malformed)
+
+    def test_tampered_scope_metadata_is_rejected(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+        tampered = EncryptedEnvelope(**{
+            **envelope.__dict__,
+            "scope": "different-project",
+        })
+        with self.assertRaises(StorageEncryptionError):
+            self._decrypt(tampered)
+
+    def test_invalid_dek_returned_by_kms_is_rejected(self):
+        envelope = encrypt_bytes(b"fixture", **self.kwargs)
+
+        class InvalidDEKKMS:
+            def unwrap_key(self, **kwargs):
+                return b"not-a-32-byte-dek"
+
+        with self.assertRaises(StorageEncryptionError):
+            decrypt_bytes(
+                envelope,
+                key_wrapper=InvalidDEKKMS(),
+                expected_object_id="artifact-001",
+                expected_scope="project-001",
+                expected_schema_version="v1",
+            )
+
+    def test_empty_wrapped_key_from_kms_is_rejected(self):
+        class EmptyWrappedKeyKMS:
+            def wrap_key(self, **kwargs):
+                return b""
+
+        with self.assertRaises(StorageEncryptionError):
+            encrypt_bytes(
+                b"fixture",
+                **{**self.kwargs, "key_wrapper": EmptyWrappedKeyKMS()},
+            )
+
+    def _decrypt(self, envelope):
+        return decrypt_bytes(
+            envelope,
+            key_wrapper=self.kms,
+            expected_object_id="artifact-001",
+            expected_scope="project-001",
+            expected_schema_version="v1",
+        )
+
 if __name__ == "__main__":
     unittest.main()
