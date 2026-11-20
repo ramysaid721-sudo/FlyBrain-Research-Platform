@@ -13,11 +13,18 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Verify release archive and apply bridge overlay
+          name: Select matrix Python interpreter
+          command: |
+            pyenv local << parameters.python-version >>
+            python --version
+            python -m pip --version
+      - run:
+          name: Verify release archive, apply bridge overlay, and patch search parser
           command: |
             python -m zipfile -e FlyBrain_Research_Platform_Fresh_Install_v0.14.0.zip .release
             test -d .release/FlyBrain_Research_Platform_v0.14.0
             python scripts/apply_chat_bridge.py --source .release/FlyBrain_Research_Platform_v0.14.0
+            python scripts/patch_release_browser_search.py .release/FlyBrain_Research_Platform_v0.14.0
       - run:
           name: Validate tool lifecycle policy
           command: |
