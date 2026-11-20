@@ -2,15 +2,13 @@ version: 2.1
 
 # Independent, secret-free CI fallback for FlyBrain.
 # Mirrors the release validation path; no deployment or external secrets.
-parameters:
-  python-version:
-    type: string
-    default: "3.12"
-
 jobs:
   validate:
+    parameters:
+      python-version:
+        type: string
     docker:
-      - image: cimg/python:<< pipeline.parameters.python-version >>
+      - image: cimg/python:<< parameters.python-version >>
     resource_class: small
     steps:
       - checkout
