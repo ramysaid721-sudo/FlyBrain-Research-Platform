@@ -120,6 +120,13 @@ def decrypt_bytes(envelope: EncryptedEnvelope, *, key_wrapper: KeyWrapper,
     """Decrypt only when envelope identity matches caller-supplied context."""
     if not isinstance(envelope, EncryptedEnvelope):
         raise TypeError("envelope must be EncryptedEnvelope")
+    if envelope.format != _FORMAT or envelope.algorithm != _ALGORITHM:
+        raise StorageEncryptionError("unsupported encrypted envelope")
+    if not all(isinstance(value, str) and value for value in (
+        envelope.object_id, envelope.scope, envelope.schema_version,
+        envelope.kek_id, envelope.kek_version,
+    )):
+        raise StorageEncryptionError("invalid encrypted envelope metadata")
     if (envelope.object_id, envelope.scope, envelope.schema_version) != (
         expected_object_id, expected_scope, expected_schema_version
     ):
