@@ -75,3 +75,12 @@ A security model or agent may review only this public specification and syntheti
 - No external security-review agent endpoint has been verified or contacted. Railway currently has no projects and its agent connector tunnels are unavailable; Vercel billing-charge visibility returned `costs_not_found`, and its named Staging sandbox is stopped. No paid or uncertain-cost compute has been started.
 - Existing provider-managed encryption, if any, does not prove application-layer encryption or FlyBrain-controlled key rotation.
 - The current project policy remains public data only for external models; no private data is eligible.
+
+
+## Latest Staging review (2026-11-20)
+
+- The GitHub Actions workflow path filter for `pull_request` now includes the encryption module, its tests, and the pinned dependency file. The push filter already included them.
+- No workflow run was returned for the latest workflow-file commit, so this change is not yet CI-verified.
+- Supabase reports `flybrain-control` as ACTIVE with `verify_jwt=false`. Inspection of its source shows it performs a separate `x-flybrain-token` check through `verify_flybrain_worker_token`, requiring a token of at least 40 characters and comparing it with the Vault secret named `flybrain_worker_token`. The secret value was not read. This custom authentication path requires a dedicated security review; the function was not modified.
+- The `flybrain_side_effects` RLS informational finding was inspected. Table grants surfaced only for `postgres` and `service_role`, with no `anon` or `authenticated` grants in the returned result. No policy was added or permissions changed.
+- Supabase Vault is installed. No secret values were retrieved, created, rotated, or changed.
