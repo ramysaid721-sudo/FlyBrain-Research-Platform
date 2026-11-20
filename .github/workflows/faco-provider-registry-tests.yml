@@ -7,6 +7,8 @@ on:
     paths:
       - "worker/provider_registry.py"
       - "worker/test_provider_registry.py"
+      - "worker/model_data_policy.py"
+      - "worker/test_model_data_policy.py"
       - ".github/workflows/faco-provider-registry-tests.yml"
   pull_request:
     branches:
@@ -41,6 +43,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Compile provider registry
-        run: python -m compileall -q worker/provider_registry.py worker/test_provider_registry.py
+        run: python -m compileall -q worker/provider_registry.py worker/test_provider_registry.py worker/model_data_policy.py worker/test_model_data_policy.py
       - name: Run provider registry tests
-        run: python -m unittest worker.test_provider_registry -v
+        run: python -m unittest worker.test_provider_registry worker.test_model_data_policy -v
