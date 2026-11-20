@@ -1,0 +1,62 @@
+name: FACO Provider Registry Tests
+
+on:
+  push:
+    branches:
+      - faco-provider-registry-prototype
+    paths:
+      - "worker/provider_registry.py"
+      - "worker/test_provider_registry.py"
+      - "worker/model_data_policy.py"
+      - "worker/test_model_data_policy.py"
+      - "worker/model_data_scanner.py"
+      - "worker/test_model_data_scanner.py"
+      - "worker/storage_encryption.py"
+      - "worker/test_storage_encryption.py"
+      - "requirements-storage-crypto.txt"
+      - ".github/workflows/faco-provider-registry-tests.yml"
+  pull_request:
+    branches:
+      - flybrain-browser-worker-staging
+    paths:
+      - "worker/provider_registry.py"
+      - "worker/test_provider_registry.py"
+      - "worker/model_data_policy.py"
+      - "worker/test_model_data_policy.py"
+      - "worker/model_data_scanner.py"
+      - "worker/test_model_data_scanner.py"
+      - "worker/storage_encryption.py"
+      - "worker/test_storage_encryption.py"
+      - "requirements-storage-crypto.txt"
+      - ".github/workflows/faco-provider-registry-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: faco-provider-registry-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Python ${{ matrix.python-version }} unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Checkout staging prototype
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install storage encryption dependency
+        run: python -m pip install -r requirements-storage-crypto.txt
+      - name: Compile provider registry, data policy and storage encryption
+        run: python -m compileall -q worker/provider_registry.py worker/test_provider_registry.py worker/model_data_policy.py worker/test_model_data_policy.py worker/model_data_scanner.py worker/test_model_data_scanner.py worker/storage_encryption.py worker/test_storage_encryption.py
+      - name: Run provider registry, data policy, scanner and storage encryption tests
+        run: python -m unittest worker.test_provider_registry worker.test_model_data_policy worker.test_model_data_scanner worker.test_storage_encryption -v
