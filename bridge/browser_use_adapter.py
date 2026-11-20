@@ -347,7 +347,7 @@ def browserless_status() -> dict:
 
 
 def run_browserless_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
-    """Fetch a public page through Browserless rendered Chromium, with strict opt-in."""
+    """Fetch one public host through Browserless with in-browser request interception."""
     if output_format not in {"markdown", "text", "json"}:
         raise ValueError("output_format must be markdown, text, or json")
     if not isinstance(include_links, bool):
@@ -361,58 +361,90 @@ def run_browserless_fetch(url: str, output_format: str = "markdown", include_lin
     endpoint = os.environ.get(
         "BROWSERLESS_CONTENT_ENDPOINT", "https://production-sfo.browserless.io/content"
     ).rstrip("/")
+    parsed_endpoint = urlparse(endpoint)
+    if parsed_endpoint.path.rstrip("/") != "/content":
+        raise BrowserUseNotConfigured("Browserless endpoint path must be /content")
+    endpoint = endpoint.rsplit("/", 1)[0] + "/function"
     token = os.environ["BROWSERLESS_TOKEN"]
     hostname = urlparse(target).hostname
-    # Restrict the remote browser to the exact validated target host, including redirects/subresources.
-    query = urlencode({"token": token, "allowedDomains": hostname})
+    # Browserless /function runs Puppeteer. Intercept every browser request and allow
+    # only HTTPS requests to the exact validated hostname. No undocumented allowlist
+    # query parameters are relied upon.
+    browser_code = (
+        "export default async ({ page }) => {"
+        "const target = " + json.dumps(target) + ";"
+        "const allowedHost = " + json.dumps(hostname) + ";"
+        "await page.setRequestInterception(true);"
+        "page.on('request', request => {"
+        "try { const parsed = new URL(request.url());"
+        "if (parsed.protocol === 'https:' && parsed.hostname.toLowerCase() === allowedHost) "
+        "return request.continue();"
+        "return request.abort();"
+        "} catch (_) { return request.abort(); }"
+        "});"
+        "let navigationError = null;"
+        "try { await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 12000 }); }"
+        "catch (error) { navigationError = String(error && error.message || error).slice(0, 500); }"
+        "const html = await page.content();"
+        "return { data: { html, finalUrl: page.url(), navigationError }, type: 'application/json' };"
+        "};"
+    )
+    query = urlencode({"token": token})
     request = Request(
         endpoint + "?" + query,
-        data=json.dumps({
-            "url": target,
-            "gotoOptions": {"waitUntil": "domcontentloaded", "timeout": 12000},
-            "bestAttempt": False,
-        }).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Cache-Control": "no-cache"},
+        data=browser_code.encode("utf-8"),
+        headers={"Content-Type": "application/javascript", "Cache-Control": "no-cache"},
         method="POST",
     )
     try:
-        with urlopen(request, timeout=20) as response:
+        with urlopen(request, timeout=25) as response:
             if not 200 <= response.status < 300:
                 raise BrowserUseNotConfigured("Browserless returned a non-success HTTP status")
-            html = response.read(1_500_001)
-            if len(html) > 1_500_000:
-                raise ValueError("Browserless response exceeded the 1.5 MB extraction limit")
-            content_type = response.headers.get("Content-Type", "text/html")
+            payload = response.read(2_000_001)
+            if len(payload) > 2_000_000:
+                raise ValueError("Browserless response exceeded the 2 MB extraction limit")
+            response_type = response.headers.get("Content-Type", "")
     except HTTPError as exc:
-        # Never include the request URL: it contains the API token.
         raise BrowserUseNotConfigured(f"Browserless request failed with HTTP {exc.code}") from None
     except URLError as exc:
         raise BrowserUseNotConfigured(f"Browserless connection failed: {type(exc.reason).__name__}") from None
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+        data = decoded.get("data", decoded) if isinstance(decoded, dict) else {}
+        html = data.get("html", "") if isinstance(data, dict) else ""
+        final_url = data.get("finalUrl", target) if isinstance(data, dict) else target
+        navigation_error = data.get("navigationError") if isinstance(data, dict) else None
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        raise BrowserUseNotConfigured("Browserless returned an invalid JSON function response") from None
+    if not isinstance(html, str) or not html:
+        raise BrowserUseNotConfigured("Browserless returned no rendered HTML")
+    # A redirected final URL is accepted only if it remains on the exact target host.
+    final = urlparse(final_url)
+    if final.scheme != "https" or final.hostname != hostname:
+        raise BrowserUseNotConfigured("Browserless navigation left the permitted host")
     parser = _PageParser()
-    parser.feed(html.decode("utf-8", errors="replace"))
+    parser.feed(html)
     content = parser.page_text()
     links = []
     if include_links:
         for item in parser.links[:100]:
-            raw = urljoin(target, item.get("href", "").strip())
-            if raw.startswith("https://"):
-                try:
-                    safe = _validate_url(raw)
-                except ValueError:
-                    continue
-                links.append({"text": " ".join(item.get("text", "").split())[:300], "url": safe})
+            raw = urljoin(final_url, item.get("href", "").strip())
+            parsed_link = urlparse(raw)
+            if parsed_link.scheme == "https" and parsed_link.hostname == hostname:
+                links.append({"text": " ".join(item.get("text", "").split())[:300], "url": raw})
     return {
         "status": "completed",
-        "url": target,
+        "url": final_url,
         "title": parser.title.strip()[:500],
         "description": parser.description,
-        "content_type": content_type,
+        "content_type": response_type or "application/json",
         "content": content[:30000],
         "links": links,
-        "extraction_mode": "Browserless rendered Chromium",
+        "extraction_mode": "Browserless rendered Chromium with exact-host request interception",
         "provider": "browserless",
         "side_effects": False,
         "content_is_untrusted": True,
+        "navigation_error": navigation_error,
     }
 
 
