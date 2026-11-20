@@ -29,7 +29,7 @@ def test_public_search_requires_explicit_network_permission():
     with_network = build_task_contract("Research a public topic", "public", ["http_research"], True, 0.0)
     plan = plan_task_route(with_network, "web.public_search")
     assert plan["status"] == "route_planned"
-    assert plan["routes"][0]["execution_ready"] is False
+    assert plan["routes"][0]["execution_ready"] is True
 
 
 def test_paid_budget_is_rejected():
@@ -78,3 +78,31 @@ def test_registry_does_not_claim_unwired_local_runtime_is_ready():
     plan = plan_task_route(contract, "flybrain.project_context")
     assert plan["routes"][0]["execution_ready"] is False
     assert plan["routes"][0]["requires_runtime_verification"] is True
+
+
+def test_public_search_adapter_requires_explicit_public_network_and_is_read_only(monkeypatch):
+    from flybrain_os import browser_use_adapter
+    from flybrain_os.capability_mesh import execute_read_only_capability
+
+    monkeypatch.setattr(browser_use_adapter, "run_browser_search",
+                        lambda query, max_results: {"status": "completed", "query": query, "results": []})
+    contract = build_task_contract("Search public sources", "public", ["http_research"], True, 0.0)
+    result = execute_read_only_capability(contract, "web.public_search",
+                                          {"query": "public climate data", "max_results": 3})
+    assert result["execution_started"] is True
+    assert result["side_effects"] is False
+    assert result["result"]["query"] == "public climate data"
+
+
+def test_external_adapter_rejects_confidential_data():
+    from flybrain_os.capability_mesh import execute_read_only_capability
+    contract = build_task_contract("Search", "confidential", ["local", "http_research"], True, 0.0)
+    with pytest.raises(TaskContractError):
+        execute_read_only_capability(contract, "web.public_search", {"query": "private notes"})
+
+
+def test_external_adapter_rejects_missing_network_permission():
+    from flybrain_os.capability_mesh import execute_read_only_capability
+    contract = build_task_contract("Search", "public", ["http_research"], False, 0.0)
+    with pytest.raises(TaskContractError):
+        execute_read_only_capability(contract, "web.public_search", {"query": "topic"})
