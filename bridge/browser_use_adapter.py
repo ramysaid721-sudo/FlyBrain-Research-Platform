@@ -352,12 +352,13 @@ def run_browserless_fetch(url: str, output_format: str = "markdown", include_lin
         raise ValueError("output_format must be markdown, text, or json")
     if not isinstance(include_links, bool):
         raise ValueError("include_links must be boolean")
-    target = _validate_url(url)
+    # Fail closed before DNS resolution or any network-dependent validation.
     status = browserless_status()
     if not status["configured"]:
         raise BrowserUseNotConfigured(
             "Browserless is not enabled. Configure BROWSERLESS_TOKEN and explicitly set BROWSERLESS_ALLOW_USAGE=true."
         )
+    target = _validate_url(url)
     endpoint = os.environ.get(
         "BROWSERLESS_CONTENT_ENDPOINT", "https://production-sfo.browserless.io/content"
     ).rstrip("/")
