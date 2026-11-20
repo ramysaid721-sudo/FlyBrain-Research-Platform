@@ -157,6 +157,7 @@ def koofr_webdav_write(object_key: str, content_base64: str, confirm_write: bool
     url = _object_url(object_key)
     headers = _headers()
     headers["Content-Type"] = "application/octet-stream"
+    headers["If-None-Match"] = "*"
     request = urllib.request.Request(url, data=content, headers=headers, method="PUT")
     try:
         with _open(request) as response:
@@ -173,6 +174,8 @@ def koofr_webdav_write(object_key: str, content_base64: str, confirm_write: bool
     except urllib.error.HTTPError as exc:
         if exc.code in {301, 302, 303, 307, 308}:
             raise KoofrStorageError("WebDAV redirect rejected") from None
+        if exc.code == 412:
+            raise KoofrStorageError("object already exists or conditional creation is unsupported; no overwrite was performed") from None
         raise KoofrStorageError("Koofr WebDAV write failed with HTTP " + str(exc.code)) from None
     except urllib.error.URLError:
         raise KoofrStorageError("Koofr WebDAV write could not reach the configured endpoint") from None
