@@ -168,3 +168,25 @@ def test_execute_read_only_route_rejects_unapproved_arguments(tmp_path):
                    "arguments": {"query": "topic", "arbitrary": "not allowed"}}}}
     response, body = call(app, request)
     assert response["status"] == "400 Bad Request"
+
+
+def test_execute_local_project_context_route_keeps_confidential_data_local(tmp_path, monkeypatch):
+    token = "z" * 40
+    monkeypatch.setattr("flybrain_os.chat_api.retrieve_project_context",
+                        lambda question, limit=6: [{"source": "README.md", "excerpt": "Local result"}])
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 25, "method": "tools/call",
+               "params": {"name": "execute_read_only_route", "arguments": {
+                   "objective": "Retrieve confidential project context",
+                   "capability_id": "flybrain.project_context",
+                   "data_classification": "confidential",
+                   "allowed_providers": ["local"],
+                   "allow_network": False,
+                   "arguments": {"limit": 3}}}}
+    response, body = call(app, request)
+    result = body["result"]["structuredContent"]
+    assert response["status"] == "200 OK"
+    assert result["provider"] == "local"
+    assert result["data_classification"] == "confidential"
+    assert result["side_effects"] is False
+    assert result["result"]["sources"][0]["source"] == "README.md"
