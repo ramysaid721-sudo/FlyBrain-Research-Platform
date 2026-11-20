@@ -363,4 +363,4 @@ export default {
   }
 };
 
-export { validateUrl, hostAllowed, signSessionToken, readSessionToken };
+export { validateUrl, hostAllowed, signSessionToken, readSessionToken, callTool };
