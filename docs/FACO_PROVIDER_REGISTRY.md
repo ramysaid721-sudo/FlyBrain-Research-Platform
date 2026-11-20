@@ -4,30 +4,19 @@ Status: isolated prototype on `faco-provider-registry-prototype`; not connected 
 
 ## Purpose
 
+Introduce a deterministic provider-selection boundary before adding additional compute providers. The selector is side-effect free: it does not create resources, access credentials, make network requests, or launch work.
+
 ## External reasoning-model data boundary
 
-FlyBrain's external reasoning-model policy is **public data only**. Before any
-external inference request is constructed, the caller must pass the input through
-`worker.model_data_policy.assert_external_model_input_allowed` with an exact
-`data_class="public"` classification and explicit false values for both
-`contains_secrets` and `contains_personal_data`. Unknown, internal, private,
-confidential, secret-bearing, personal-data-bearing, or unverified inputs fail
-closed.
+FlyBrain's external reasoning-model policy is **public data only**. Before an external inference request is constructed, the caller must pass the input through `worker.model_data_policy.assert_external_model_input_allowed` with an exact `data_class="public"` classification and explicit false values for both `contains_secrets` and `contains_personal_data`. Unknown, internal, private, confidential, secret-bearing, personal-data-bearing, or unverified inputs fail closed.
 
-This guard validates caller-supplied classification flags; it does **not**
-inspect, scan, redact, or prove the contents of a payload. It must therefore be
-used only after a trusted classification step. Never pass credentials, API
-keys, tokens, private source code, personal information, or operational secrets
-to an external model. No model provider is activated by this policy change.
+This guard validates caller-supplied classification flags; it does **not** inspect, scan, redact, or prove the contents of a payload. It must therefore be used only after a trusted classification step. Never pass credentials, API keys, tokens, private source code, personal information, or operational secrets to an external model. No model provider is activated by this policy change, and this guard is not yet wired into a live inference path.
 
 The dedicated policy tests are run with the provider-registry tests:
 
 ```bash
 python -m unittest worker.test_provider_registry worker.test_model_data_policy -v
 ```
-
-
-Introduce a deterministic provider-selection boundary before adding additional compute providers. The selector is side-effect free: it does not create resources, access credentials, make network requests, or launch work.
 
 ## Fail-closed admission rules
 
@@ -59,14 +48,15 @@ Therefore this prototype does not claim multi-cloud execution. It establishes th
 3. Persist the selected provider and its quota evidence with the execution record.
 4. Add transactional claim/dispatch integration with lease fencing and idempotency.
 5. Test fallback after provider outage, capacity exhaustion, and stale quota data.
-6. Enable one additional provider only after its free allowance, data policy, network scope, and shutdown behavior are verified.
+6. Wire the public-only model-data guard into the external inference request path before enabling any model.
+7. Enable one additional provider only after its free allowance, data policy, network scope, and shutdown behavior are verified.
 
 ## Local tests
 
 Run from the repository root:
 
 ```bash
-python -m unittest worker.test_provider_registry -v
+python -m unittest worker.test_provider_registry worker.test_model_data_policy -v
 ```
 
-The test suite covers zero-cost admission, missing/stale quota evidence, circuit breaker, health, concurrency, strict input validation, runtime and data-class constraints, network/region requirements, and deterministic ordering.
+The provider-registry suite covers zero-cost admission, missing/stale quota evidence, circuit breaker, health, concurrency, strict input validation, runtime and data-class constraints, network/region requirements, and deterministic ordering. The model-data-policy suite verifies public-only admission and rejection of sensitive or unverified classifications.
