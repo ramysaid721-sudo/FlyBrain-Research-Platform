@@ -204,3 +204,26 @@ The first bounded capability-mesh slice has now been added to the staging branch
 These files and tool registrations are present on the staging branch. GitHub Actions annotations identify an account billing/spending-limit block that prevents jobs from starting; job-step summaries are empty and the log endpoint returns `BlobNotFound`. Therefore test execution and CI success are **not yet verified**. A local clone attempt was blocked because the execution environment could not resolve `github.com`. The production Vercel deployment was separately checked and remains `READY`, with no runtime errors reported in the last 24 hours. No production deployment or merge was performed.
 
 The current adapter slice is not a general multi-model federation engine. External model consultation remains disabled until provider identity, pricing, quotas, privacy terms, and live health checks can be verified. Persistent queues, scheduled workers, automated skill promotion, and ARIS runtime ingestion remain future implementation work.
+
+## Browserless rendered-browser fallback — staging adapter
+
+The bridge now includes an optional Browserless `/content` adapter for JavaScript-rendered public pages. It is selected only when `FLYBRAIN_WEB_FETCH_PROVIDER=browserless`; the existing direct-HTTP extractor remains the default.
+
+Required runtime configuration:
+- `BROWSERLESS_TOKEN`: secret API token, stored only in the deployment secret manager.
+- `BROWSERLESS_ALLOW_USAGE=true`: explicit operator opt-in because Browserless requests can consume plan units.
+- `BROWSERLESS_CONTENT_ENDPOINT`: optional HTTPS endpoint; defaults to `https://production-sfo.browserless.io/content` and is restricted to Browserless hostnames.
+
+Safety controls:
+- Public HTTPS targets only; existing URL validation rejects private/non-public address targets before dispatch.
+- Browserless receives an exact-host `allowedDomains` restriction for the requested target, limiting cross-host navigation and subresource access.
+- Request timeout is bounded; response size is capped at 1.5 MB.
+- API token is never included in returned result data or error messages.
+- The adapter is read-only and treats page content as untrusted.
+- No Browserless token is present in source control and no account has been connected by this code change.
+- The adapter is not enabled by default. No paid or metered calls occur unless an operator provisions the token, explicitly opts in, and selects the provider.
+
+Verification boundary:
+- Unit tests cover fail-closed configuration, explicit usage opt-in, target-host restriction, response parsing, and token non-disclosure.
+- These tests have been added to the staging test suite but have not yet been confirmed passing in GitHub Actions because the current Actions artifact/log retrieval is returning `BlobNotFound`.
+- Live Browserless verification remains pending a user-provisioned API token and explicit usage opt-in.
