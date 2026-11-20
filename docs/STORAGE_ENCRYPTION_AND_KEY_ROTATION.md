@@ -91,3 +91,10 @@ A security model or agent may review only this public specification and syntheti
 - The eight storage-encryption unit tests were executed locally against the fetched Staging-branch source using Python 3.13.5 and `cryptography 46.0.4`.
 - Result: 8 tests passed.
 - This verifies the synthetic adapter/test path in that local runtime only. It does not establish Python 3.12 compatibility, hosted-runner success, production KMS integration, or persistent-storage encryption.
+
+
+## GitHub-hosted runner diagnosis (2026-11-20)
+
+- The second attempt of workflow run `44728433023` was inspected through the GitHub Actions run-attempt jobs endpoint.
+- Both matrix jobs completed in approximately three seconds with empty `steps`, `runner_id=0`, and an empty `runner_name`. This confirms that neither job was assigned a runner; the failed conclusion is not a Python test result.
+- Job-log downloads returned `BlobNotFound`. Further retries are paused until runner availability is restored; repeated dispatches would not provide useful evidence.
