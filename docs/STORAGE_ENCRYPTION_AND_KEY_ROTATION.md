@@ -106,3 +106,11 @@ A security model or agent may review only this public specification and syntheti
 - `rewrap_data_key` now validates envelope type/format and source/target key metadata, validates the unwrapped DEK, rejects empty wrapped-key responses, and normalizes unexpected KMS adapter failures to `StorageEncryptionError`.
 - Synthetic tests now include malformed nonce and wrapped-DEK data, altered scope metadata, invalid KMS DEK/wrap responses, invalid target key metadata, KMS unwrap/wrap exceptions, unsupported envelope identifiers, and non-envelope input.
 - These are code and test additions only. Hosted CI has not yet supplied a successful test result; no production KMS, persistent storage, or file-encryption integration is configured.
+
+
+## Follow-up CI observation (2026-11-20)
+
+- The latest pull-request-triggered workflow run observed after envelope hardening was `44729887765`.
+- Both Python matrix jobs completed with `failure`, but the jobs endpoint returned empty step lists and log downloads returned `BlobNotFound`.
+- Therefore the hosted run still provides no evidence that Python setup, dependency installation, compilation, or unit tests actually started. It must not be reported as a code-test failure or a passing CI run.
+- The current storage-encryption test module contains 20 test methods. No new local execution result is claimed for this expanded set.
