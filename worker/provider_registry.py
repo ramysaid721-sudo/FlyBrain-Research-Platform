@@ -41,9 +41,9 @@ class ProviderOffer:
     supported_runtimes: FrozenSet[str]
     capabilities: FrozenSet[str]
     allowed_data_classes: FrozenSet[str]
+    estimated_cost_usd: float
     network_access: bool = False
     region: Optional[str] = None
-    estimated_cost_usd: float = 0.0
     priority: int = 100
     healthy: bool = True
     circuit_open: bool = False
