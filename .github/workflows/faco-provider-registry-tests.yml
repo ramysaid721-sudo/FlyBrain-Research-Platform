@@ -9,6 +9,8 @@ on:
       - "worker/test_provider_registry.py"
       - "worker/model_data_policy.py"
       - "worker/test_model_data_policy.py"
+      - "worker/model_data_scanner.py"
+      - "worker/test_model_data_scanner.py"
       - ".github/workflows/faco-provider-registry-tests.yml"
   pull_request:
     branches:
@@ -18,6 +20,8 @@ on:
       - "worker/test_provider_registry.py"
       - "worker/model_data_policy.py"
       - "worker/test_model_data_policy.py"
+      - "worker/model_data_scanner.py"
+      - "worker/test_model_data_scanner.py"
       - ".github/workflows/faco-provider-registry-tests.yml"
   workflow_dispatch:
 
@@ -44,7 +48,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Compile provider registry
-        run: python -m compileall -q worker/provider_registry.py worker/test_provider_registry.py worker/model_data_policy.py worker/test_model_data_policy.py
-      - name: Run provider registry tests
-        run: python -m unittest worker.test_provider_registry worker.test_model_data_policy -v
+      - name: Compile provider registry and data policy
+        run: python -m compileall -q worker/provider_registry.py worker/test_provider_registry.py worker/model_data_policy.py worker/test_model_data_policy.py worker/model_data_scanner.py worker/test_model_data_scanner.py
+      - name: Run provider registry and data policy tests
+        run: python -m unittest worker.test_provider_registry worker.test_model_data_policy worker.test_model_data_scanner -v
