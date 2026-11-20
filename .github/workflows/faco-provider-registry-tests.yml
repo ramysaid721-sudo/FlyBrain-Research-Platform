@@ -25,6 +25,9 @@ on:
       - "worker/test_model_data_policy.py"
       - "worker/model_data_scanner.py"
       - "worker/test_model_data_scanner.py"
+      - "worker/storage_encryption.py"
+      - "worker/test_storage_encryption.py"
+      - "requirements-storage-crypto.txt"
       - ".github/workflows/faco-provider-registry-tests.yml"
   workflow_dispatch:
 
