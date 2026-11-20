@@ -54,7 +54,11 @@ function validateAllowlist(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 50 || !value.every(validHostPattern)) {
     throw new Error("allowedDomains must contain 1–50 valid hostname patterns");
   }
-  return [...new Set(value.map((v) => v.toLowerCase()))];
+  const normalized = [...new Set(value.map((v) => v.toLowerCase()))];
+  if (normalized.join(",").length > 2500) {
+    throw new Error("Combined allowedDomains length must not exceed 2500 characters");
+  }
+  return normalized;
 }
 
 function base64UrlEncode(bytes) {
@@ -87,7 +91,9 @@ async function signSessionToken(env, sessionId, allowedDomains, expiresAt = Date
   const encoded = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
   const key = await sessionSigningKey(env);
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(encoded));
-  return encoded + "." + base64UrlEncode(new Uint8Array(signature));
+  const token = encoded + "." + base64UrlEncode(new Uint8Array(signature));
+  if (token.length > 4096) throw new Error("Browser session token exceeds the safe size limit");
+  return token;
 }
 async function readSessionToken(env, token) {
   if (typeof token !== "string" || token.length > 4096) throw new Error("Invalid or expired browser session token");
