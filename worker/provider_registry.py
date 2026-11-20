@@ -11,6 +11,36 @@ from math import isfinite
 from typing import FrozenSet, Iterable, Optional
 
 
+def _require_text(value: object, field: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+
+
+def _require_bool(value: object, field: str) -> None:
+    if type(value) is not bool:
+        raise ValueError(f"{field} must be a boolean")
+
+
+def _require_int(value: object, field: str, *, minimum: int) -> None:
+    # bool is an int subclass, so use an exact type check.
+    if type(value) is not int or value < minimum:
+        raise ValueError(f"{field} must be an integer >= {minimum}")
+
+
+def _require_cost(value: object, field: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a finite non-negative number")
+    if not isfinite(value) or value < 0:
+        raise ValueError(f"{field} must be a finite non-negative number")
+
+
+def _require_string_set(value: object, field: str) -> None:
+    if not isinstance(value, frozenset) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
+        raise ValueError(f"{field} must be a frozenset of non-empty strings")
+
+
 @dataclass(frozen=True)
 class TaskRequirements:
     runtime: str
@@ -22,12 +52,14 @@ class TaskRequirements:
     region: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if not self.runtime or not self.capability or not self.data_class:
-            raise ValueError("runtime, capability, and data_class are required")
-        if self.max_runtime_seconds <= 0:
-            raise ValueError("max_runtime_seconds must be positive")
-        if not isfinite(self.max_cost_usd) or self.max_cost_usd < 0:
-            raise ValueError("max_cost_usd must be finite and non-negative")
+        _require_text(self.runtime, "runtime")
+        _require_text(self.capability, "capability")
+        _require_text(self.data_class, "data_class")
+        _require_int(self.max_runtime_seconds, "max_runtime_seconds", minimum=1)
+        _require_cost(self.max_cost_usd, "max_cost_usd")
+        _require_bool(self.network_required, "network_required")
+        if self.region is not None:
+            _require_text(self.region, "region")
 
 
 @dataclass(frozen=True)
@@ -49,14 +81,27 @@ class ProviderOffer:
     circuit_open: bool = False
 
     def __post_init__(self) -> None:
-        if not self.name:
-            raise ValueError("provider name is required")
-        if self.max_parallelism < 0 or self.active_jobs < 0:
-            raise ValueError("parallelism counters cannot be negative")
-        if self.max_runtime_seconds < 0:
-            raise ValueError("max_runtime_seconds cannot be negative")
-        if not isfinite(self.estimated_cost_usd) or self.estimated_cost_usd < 0:
-            raise ValueError("estimated_cost_usd must be finite and non-negative")
+        _require_text(self.name, "name")
+        for field in (
+            "enabled",
+            "free_capacity_confirmed",
+            "network_access",
+            "healthy",
+            "circuit_open",
+        ):
+            _require_bool(getattr(self, field), field)
+        _require_int(self.max_parallelism, "max_parallelism", minimum=1)
+        _require_int(self.active_jobs, "active_jobs", minimum=0)
+        if self.active_jobs > self.max_parallelism:
+            raise ValueError("active_jobs cannot exceed max_parallelism")
+        _require_int(self.max_runtime_seconds, "max_runtime_seconds", minimum=1)
+        _require_int(self.priority, "priority", minimum=0)
+        _require_string_set(self.supported_runtimes, "supported_runtimes")
+        _require_string_set(self.capabilities, "capabilities")
+        _require_string_set(self.allowed_data_classes, "allowed_data_classes")
+        _require_cost(self.estimated_cost_usd, "estimated_cost_usd")
+        if self.region is not None:
+            _require_text(self.region, "region")
 
 
 @dataclass(frozen=True)
@@ -82,6 +127,8 @@ def select_provider(
     rejected: list[tuple[str, str]] = []
 
     for offer in offers:
+        if not isinstance(offer, ProviderOffer):
+            raise TypeError("offers must contain only ProviderOffer instances")
         reason = None
         if not offer.enabled:
             reason = "disabled"
@@ -121,7 +168,7 @@ def select_provider(
         eligible,
         key=lambda item: (
             item.priority,
-            item.active_jobs / max(item.max_parallelism, 1),
+            item.active_jobs / item.max_parallelism,
             item.name,
         ),
     )
