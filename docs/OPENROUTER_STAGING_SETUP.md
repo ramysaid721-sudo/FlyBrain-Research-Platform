@@ -21,6 +21,8 @@ The API key never enters the Vercel request body, GitHub source, or application 
 ## Free-only controls
 
 - The only permitted model route is `openrouter/free`.
+- The returned model identifier must end in `:free`; any other served model is rejected.
+- Any reported non-zero inference cost is rejected.
 - The caller cannot supply or override a model identifier.
 - Maximum output is 512 tokens.
 - The Edge Function applies a per-instance limit of 10 requests per minute.
