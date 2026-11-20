@@ -65,6 +65,19 @@ class ProviderRegistryTests(unittest.TestCase):
         self.assertFalse(result.selected)
         self.assertIn(("alpha", "cost_ceiling_exceeded"), result.rejected)
 
+    def test_nonzero_cost_is_rejected_even_with_positive_task_budget(self):
+        requirements = TaskRequirements(
+            runtime="python3.12",
+            capability="pytest",
+            max_cost_usd=10.0,
+        )
+        result = select_provider(
+            requirements,
+            [offer(estimated_cost_usd=0.01)],
+        )
+        self.assertFalse(result.selected)
+        self.assertIn(("alpha", "nonzero_cost"), result.rejected)
+
     def test_open_circuit_is_rejected(self):
         result = select_provider(self.requirements, [offer(circuit_open=True)])
         self.assertFalse(result.selected)
