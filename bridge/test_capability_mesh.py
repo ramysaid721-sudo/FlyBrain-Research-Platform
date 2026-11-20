@@ -60,3 +60,10 @@ def test_unknown_classification_is_rejected():
 def test_unknown_provider_has_no_route():
     contract = build_task_contract("Task", "public", ["unknown-provider"], False, 0.0)
     assert plan_task_route(contract)["status"] == "no_eligible_route"
+
+
+def test_unknown_external_provider_cost_is_not_assumed_free():
+    contract = build_task_contract("Consult an external model", "public",
+                                   ["modelhub"], True, 0.0)
+    plan = plan_task_route(contract, "model.external_consultation")
+    assert plan["status"] == "no_eligible_route"
