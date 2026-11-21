@@ -31,6 +31,17 @@ Run the Browser Worker tests and the Staging gateway proxy tests. Perform Wrangl
 
 No Production deployment, paid plan, or billing change is authorized by this configuration.
 
+## Alternative deployment: Cloudflare Workers Builds
+
+This is the preferred fallback when GitHub-hosted Actions runners cannot start. Cloudflare can build directly from the Git repository on pushes, so it does not depend on GitHub-hosted runners.
+
+1. In Cloudflare Workers & Pages, connect a Worker to this GitHub repository and select the Staging branch.
+2. For the Browser Worker, set the root directory to `cloudflare-browser-staging`, build command to `node --test src/index.test.js && node --check src/index.js`, and deploy command to `npx wrangler deploy --config wrangler.jsonc`. Add `FLYBRAIN_SESSION_SIGNING_KEY` as a Worker secret and deploy this Worker first.
+3. For the gateway, connect a second Worker from the same repository and branch. Set root directory to `cloudflare-staging`, build command to `node --test worker/browser-proxy.test.js`, and deploy command to `npx wrangler deploy --config wrangler.jsonc`. Add `FLYBRAIN_BROWSER_ACCESS_TOKEN` as a Worker secret.
+4. Keep the Browser Worker name exactly `flybrain-browser-staging`; the gateway's private Service binding targets that name.
+
+Cloudflare's Git integration can run builds and deployments on push. This route avoids GitHub Actions runner allocation and does not require storing a Cloudflare API token or account ID in GitHub. Cloudflare still requires the one-time repository authorization and Worker configuration in its dashboard. The Browser Worker must be deployed before the gateway because the service-binding target must exist first.
+
 ## Staging deployment trigger
 
 The prepared deploy workflow is restricted to this Staging branch. To trigger it from this PR branch without changing the default branch, push a relevant commit whose message explicitly contains `[deploy-staging-only]`. Ordinary commits do not deploy. The workflow also retains a manual `workflow_dispatch` gate for when GitHub exposes it from the default branch.
