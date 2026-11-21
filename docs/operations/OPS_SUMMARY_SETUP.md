@@ -1,58 +1,53 @@
-# FlyBrain Operations Summary — Staging Setup
+# FlyBrain Operations Dashboard — Staging
 
-**Status:** source prepared; not deployed. The SQL migration has been syntax/runtime-tested inside a transaction and rolled back. No persistent database changes have been made.
+**Deployment status:** Edge Function v2 is active in Supabase Staging. The aggregate RPC migration has been applied to Staging. No Production resources were changed.
 
-## Authentication design
+## Dashboard URL
 
-The endpoint uses Supabase Auth user JWT validation through the current `@supabase/server` Edge Function wrapper, then performs a second authorization check against a server-side allowlist of exact Supabase Auth user UUIDs.
+`https://iudimypauqbkyvjuprgp.supabase.co/functions/v1/flybrain-ops-summary`
 
-The database RPC is `SECURITY DEFINER` but its EXECUTE privilege is revoked from `PUBLIC`, `anon`, and `authenticated`; only `service_role` can execute it. The Edge Function checks the user identity before invoking the RPC through its server-side admin client.
+The function serves the login page and the protected summary API on the same HTTPS origin. No separate hosting service, Vercel deployment, custom domain, or cross-origin dashboard secret is required.
 
-Never put a Supabase secret/service-role key in browser code, a Vercel `NEXT_PUBLIC_*` variable, or this repository.
+## Authentication and authorization
 
-## Required Staging function secrets
+- Supabase Auth email/password login.
+- No public signup flow is provided by the dashboard.
+- The Edge Function checks a valid Auth user JWT and then checks the exact user UUID against `FLYBRAIN_OPS_OWNER_IDS`.
+- The owner allowlist secret was entered manually by the project owner in Supabase Dashboard. Its value is never stored in Git or shown in the UI.
+- The browser uses only the project's publishable API key. No service-role key or worker token is sent to the browser.
+- Access and refresh tokens remain in page memory only; reloading the page requires signing in again.
+- The API is same-origin. If `FLYBRAIN_OPS_ALLOWED_ORIGIN` is absent, the function derives the exact HTTPS origin from the project's `SUPABASE_URL`. A configured value, if present, takes precedence and must exactly match.
+- Gateway-level JWT verification is disabled because the public login shell must load before sign-in. The protected API route independently validates the Supabase Auth user JWT through `withSupabase({ auth: "user" })`, followed by owner allowlist authorization. Do not remove either check.
 
-Set these in Supabase Dashboard → Project Settings / Edge Functions → Secrets for Staging only:
+## Dashboard scope
 
-| Secret | Value |
-|---|---|
-| `FLYBRAIN_OPS_OWNER_IDS` | Comma-separated exact UUID(s) of explicitly authorized Supabase Auth users. Start with one owner UUID only. |
-| `FLYBRAIN_OPS_ALLOWED_ORIGIN` | Exact HTTPS origin of the eventual dashboard, e.g. `https://your-dashboard.example` (origin only; no path or trailing slash). |
+Read-only aggregate metrics:
+- Queue depth, visible messages, and total message count.
+- Task counts by status and retry profile.
+- Completed-task latency: average, median, P95, maximum.
+- Active and expired leases.
+- Worker event counts and event coverage.
+- Group integrity and capability-token hash mismatch count.
+- Cron schedule and last-24-hour execution reliability.
 
-Do not use email addresses as allowlist entries. Do not put UUIDs in Git. Do not enable public signup as a shortcut. Obtain the owner UUID from Supabase Dashboard → Authentication → Users, and verify that it is the account intended to administer this project.
+The response intentionally excludes task/group identifiers, task payloads, user queries, result content, capability tokens and hashes, SQL, Cron command text, credentials, and authorization headers. No task mutation controls are exposed.
 
-**Current audit finding:** the Staging Auth user table currently contains **zero users**. There is therefore no existing owner UUID to allowlist. An authorized project owner must first add the intended administrator through Authentication → Users → Add user (or the project's approved private sign-in process). Do not send the account password or a session token through chat. After the account exists, copy its UUID directly into the Staging secret value.
+## Database RPC
 
-The current connector does not expose a safe Edge Function secret-management action. Therefore these two values cannot be set by this repository change; they must be entered in the Supabase Dashboard by an authorized project owner. Do not send the UUID or any secret through chat.
+Migration: `supabase/migrations/20261121102000_add_flybrain_ops_summary_rpc.sql`
 
-The existing Vercel domain `flybrain-research-mcp.vercel.app` currently serves the MCP gateway, not a dashboard. Its project-level password and SSO protection are disabled. It is **not** being assumed as the dashboard origin. Leave `FLYBRAIN_OPS_ALLOWED_ORIGIN` unset until a dedicated dashboard origin is selected and protected.
+RPC: `public.flybrain_ops_summary()`
 
-## Deployment sequence (not yet performed)
+The RPC is SECURITY DEFINER with a fixed `pg_catalog` search path and fully qualified object references. EXECUTE is revoked from PUBLIC, anon, and authenticated; service_role alone can execute it. The Edge Function performs owner authorization before invoking it using its server-side admin client.
 
-1. Confirm the owner UUID and the final dashboard HTTPS origin.
-2. Set the two Staging secrets above.
-3. Apply `supabase/migrations/20261121102000_add_flybrain_ops_summary_rpc.sql` to Staging through the approved migration process.
-4. Deploy `supabase/functions/flybrain-ops-summary/index.ts` with `verify_jwt=true`.
-5. Run `supabase/tests/flybrain_ops_summary.sql`.
-6. Test unauthenticated = 401; authenticated non-allowlisted = 403; allowlisted owner = 200.
-7. Verify that the response contains aggregates only and that no sensitive fields or secret material appear in logs or responses.
+## Deployment and verification
 
-No step above should be performed against Production.
+- Supabase Staging function: `flybrain-ops-summary`, version 2, ACTIVE.
+- `verify_jwt=false` at the gateway only to allow the login page to load. User JWT verification and owner authorization are performed inside the protected API handler.
+- Database verification confirmed the RPC exists, anon cannot execute, authenticated cannot execute, and service_role can execute.
+- No Production deployment, no GitHub merge, and no change to `main`.
+- Runtime browser login and the owner-authorized HTTP 200 response still require an interactive sign-in test by the account owner. Do not claim that the authenticated end-to-end browser test has passed until that test is observed.
 
-## Endpoint contract
+## Operational boundaries
 
-`GET /functions/v1/flybrain-ops-summary`
-
-- Requires a valid Supabase Auth user JWT.
-- Requires the JWT subject/user ID to match the server-side UUID allowlist.
-- Accepts browser requests only from the exact configured HTTPS origin.
-- Returns `Cache-Control: no-store`.
-- Returns aggregate queue, task, latency, lease, event, group-integrity and Cron metrics only.
-- Does not return task/group IDs, task payloads, user queries, result data, token hashes, capability tokens, SQL, Cron command text, database credentials, or authorization headers.
-- Does not implement retry, cancel, requeue, token rotation, deployment, or any other mutation.
-
-## Verification limits
-
-The SQL was executed in a single `BEGIN … ROLLBACK` test transaction. The returned aggregate structure matched the intended schema against the live Staging data, and the transaction was rolled back. The migration is not applied persistently, the Edge Function is not deployed, and the endpoint is not yet callable.
-
-The owner UUID and dashboard origin are intentionally not guessed. They are the two remaining configuration values before deployment.
+This dashboard is read-only. It does not submit, retry, cancel, requeue, or delete tasks; it does not rotate capability tokens, alter cron, change secrets, or deploy services.
