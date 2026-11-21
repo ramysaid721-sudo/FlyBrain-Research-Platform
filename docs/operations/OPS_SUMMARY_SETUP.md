@@ -1,6 +1,6 @@
 # FlyBrain Operations Dashboard — Staging
 
-**Deployment status:** Edge Function v2 is active in Supabase Staging. The aggregate RPC migration has been applied to Staging. No Production resources were changed.
+**Deployment status:** Edge Function v3 is active in Supabase Staging. The aggregate RPC migration has been applied to Staging. No Production resources were changed.
 
 ## Dashboard URL
 
