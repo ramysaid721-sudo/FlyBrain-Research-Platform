@@ -1,47 +1,60 @@
-# نشر FlyBrain Browser Worker — نسخة Staging
+# نشر FlyBrain Browser Worker — بيئة Staging
 
-هذه خدمة مستقلة للتصفح الآلي عبر Cloudflare Browser Run. لا تستبدل Worker الإنتاج ولا جسر الاسترجاع الحالي.
+خدمة متصفح مستقلة ومصادقة تستخدم Cloudflare Browser Run ومحرك Playwright المتوافق مع Cloudflare. لا تستبدل جسر الاسترجاع الحالي أو خدمة الإنتاج.
 
-## ما توفره
+## القدرات
 
-- جلسات Chromium سحابية.
-- فتح الصفحات والتنقل بينها.
-- قراءة النص الظاهر وبيانات الصفحة.
-- النقر عبر CSS selector وإدخال النصوص والضغط على مفاتيح محددة.
-- التقاط لقطات PNG.
-- إغلاق الجلسات وتحرير موارد Browser Run.
+- عرض صفحات HTTPS عامة باستخدام Playwright على Cloudflare Browser Run.
+- تقييد طلبات الصفحة والموارد الفرعية وإعادة التوجيه بالنطاق المستهدف نفسه.
+- فتح جلسات Chromium محمية بقائمة نطاقات مسموح بها.
+- التنقل وقراءة النص والنقر وإدخال النصوص والتقاط الصور وإغلاق الجلسات.
 
-## الحماية
+## التبديل التلقائي بين المزودين
 
-1. جميع طلبات MCP تتطلب ترويسة `Authorization: Bearer`.
-2. يجب إنشاء سر مستقل باسم `FLYBRAIN_BROWSER_API_TOKEN` في Cloudflare Worker Secrets. هذا ليس Cloudflare API Token.
-3. كل جلسة جديدة تتطلب قائمة نطاقات مسموح بها `allowedDomains`، وتفرض Cloudflare Browser Run هذه القيود طوال عمر الجلسة.
-4. مهلة الخمول 60 ثانية، ويجب استدعاء `browser_session_close` عند الانتهاء.
-5. لا تضع كلمة مرور أو مفتاح API في عنوان URL أو محتوى مستودع GitHub.
+يتبع محوّل FlyBrain ترتيباً يبدأ بأقل الخيارات تكلفة:
 
-## خطوات الربط والنشر
+1. يحاول استخراج الصفحة عبر HTTPS العادي أولاً.
+2. إذا كانت الصفحة تحتاج JavaScript أو فشل الاستخراج، يحاول Cloudflare Browser Run باستخدام Playwright.
+3. إذا تعذر Cloudflare أو فشل، يحاول Browserless فقط عند وجود مفتاحه وتفعيل علم الاستخدام صراحةً.
+4. إذا تعذر المتصفحان، يعيد نتيجة HTTP مع تنبيه إلى احتمال نقص المحتوى المعتمد على JavaScript.
 
-- افتح Workers & Pages في Cloudflare.
-- أنشئ Worker منفصلاً باسم `flybrain-browser-staging`.
-- اربطه بالمستودع `ramysaid721-sudo/FlyBrain-Research-Platform`.
-- عيّن Root directory إلى `cloudflare-browser-staging`.
-- استخدم إعداد `wrangler.jsonc` الموجود.
-- تأكد من وجود Browser binding باسم `BROWSER`.
-- أضف السر `FLYBRAIN_BROWSER_API_TOKEN` من Settings → Variables and Secrets.
-- انشر نسخة Staging فقط.
+Playwright محرك أتمتة وليس خدمة استضافة مستقلة؛ يعمل هنا فوق Cloudflare Browser Run. أما Browserless فهو مزود استضافة متصفح بديل.
 
-يمكن تنفيذ إعداد السر والنشر من Wrangler داخل هذا المجلد:
+## الأمان وضبط التكلفة
+
+- يتطلب كل طلب MCP ترويسة Bearer token.
+- يحفظ السر `FLYBRAIN_BROWSER_API_TOKEN` في Cloudflare Worker Secrets فقط.
+- يقبل Playwright صفحات HTTPS عامة فقط، ويمنع طلبات المتصفح إلى أي مضيف غير المضيف المستهدف.
+- لا يتم تجاوز CAPTCHA أو تسجيل الدخول أو أنظمة الحماية.
+- يبقى Cloudflare وBrowserless معطلين ما لم تُضبط بيانات الاعتماد وأعلام الاستخدام صراحةً.
+- لا يتم تفعيل خطة مدفوعة أو تغيير إعدادات الفوترة تلقائياً.
+
+## إعداد Cloudflare Staging
+
+1. اسم Worker: `flybrain-browser-staging`.
+2. المجلد الجذري: `cloudflare-browser-staging`.
+3. تأكد من وجود Browser binding باسم `BROWSER`.
+4. أضف `FLYBRAIN_BROWSER_API_TOKEN` كسر في إعدادات Worker.
+5. انشر Staging فقط، ثم تحقق من `/health`.
+
+## إعداد Vercel Preview للفرع التجريبي
+
+- `FLYBRAIN_BROWSER_WORKER_URL`: رابط HTTPS الكامل لـ Worker وينتهي بـ `/mcp`.
+- `FLYBRAIN_BROWSER_API_TOKEN`: السر نفسه المستخدم في Cloudflare Worker.
+- `FLYBRAIN_BROWSER_RUN_ALLOW_USAGE`: لا تضبطه على true إلا بعد التأكد من أن الخطة لا تفرض رسوماً وأن الحصة المجانية مناسبة.
+- `BROWSERLESS_TOKEN`: اختياري لخطة Browserless المجانية.
+- `BROWSERLESS_ALLOW_USAGE`: لا تضبطه على true إلا بعد التأكد من تعطيل أي تجاوز مدفوع.
+- `FLYBRAIN_WEB_FETCH_PROVIDER`: اتركه فارغاً أو اضبطه على `auto`.
+
+يجب وضع هذه المتغيرات في Preview للفرع `flybrain-browser-worker-staging` فقط، وليس في Production.
+
+## الاختبارات
+
 ```sh
-npx wrangler secret put FLYBRAIN_BROWSER_API_TOKEN
-npx wrangler deploy
+npm install --no-audit --no-fund
+npm run check
+npm test
+npx wrangler deploy --dry-run
 ```
 
-## التحقق
-
-- افتح `/health` وتأكد من ظهور `browserBinding: true` و`authenticationConfigured: true`.
-- أرسل طلب MCP مصادقاً عليه إلى `/mcp`.
-- نفّذ `initialize` ثم `tools/list`.
-- افتح جلسة اختبار بنطاق مسموح، اقرأ الصفحة، التقط صورة، ثم أغلق الجلسة.
-- راقب Browser Run usage. الخطة المجانية الموثقة تتيح 10 دقائق Browser Run يومياً وثلاث جلسات متزامنة؛ لا تفترض أن الاستخدام غير محدود.
-
-لم يتم نشر هذا Worker من خلال هذا التغيير البرمجي؛ يتطلب النشر ربط Cloudflare المصرح به.
+نجاح الفحص المحلي لا يثبت أن Browser Run أو سر المصادقة يعملان فعلياً. يلزم اختبار حي بعد نشر Staging.
