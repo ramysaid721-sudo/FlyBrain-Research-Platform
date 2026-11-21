@@ -58,3 +58,28 @@ test("oversized allowlists are rejected before issuing a session token", async (
     /Combined allowedDomains length/
   );
 });
+
+
+test("Playwright fetch rejects non-allowlisted hosts before launching a browser", async () => {
+  let browserTouched = false;
+  const mockEnv = {
+    BROWSER: {
+      async launch() { browserTouched = true; throw new Error("browser should not launch"); }
+    }
+  };
+  await assert.rejects(
+    () => callTool("browser_playwright_fetch", { url: "https://example.net/" }, mockEnv),
+    /allowlist/
+  );
+  assert.equal(browserTouched, false);
+});
+
+test("Playwright fetch rejects non-HTTPS URLs before launching a browser", async () => {
+  let browserTouched = false;
+  const mockEnv = { BROWSER: { async launch() { browserTouched = true; } } };
+  await assert.rejects(
+    () => callTool("browser_playwright_fetch", { url: "http://example.com/" }, mockEnv),
+    /Only HTTP and HTTPS/
+  );
+  assert.equal(browserTouched, false);
+});
