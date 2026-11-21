@@ -73,11 +73,11 @@ function base64UrlDecode(value) {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 async function sessionSigningKey(env) {
-  if (typeof env.FLYBRAIN_BROWSER_API_TOKEN !== "string" || env.FLYBRAIN_BROWSER_API_TOKEN.length < 32) {
+  if (typeof env.FLYBRAIN_SESSION_SIGNING_KEY !== "string" || env.FLYBRAIN_SESSION_SIGNING_KEY.length < 32) {
     throw new Error("Session signing is not configured");
   }
   return crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(env.FLYBRAIN_BROWSER_API_TOKEN),
+    "raw", new TextEncoder().encode(env.FLYBRAIN_SESSION_SIGNING_KEY),
     { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]
   );
 }
@@ -329,25 +329,13 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: HEADERS });
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ status: "ok", service: "flybrain-browser-staging", version: VERSION, browserBinding: Boolean(env.BROWSER), authenticationConfigured: Boolean(env.FLYBRAIN_BROWSER_API_TOKEN), mode: "guarded-browser-sessions" });
+      return json({ status: "ok", service: "flybrain-browser-staging", version: VERSION, browserBinding: Boolean(env.BROWSER), sessionSigningConfigured: Boolean(env.FLYBRAIN_SESSION_SIGNING_KEY), mode: "guarded-browser-sessions" });
     }
     if (url.pathname !== "/mcp") return json({ error: "not_found" }, 404);
     if (request.method !== "POST") return new Response(null, { status: 405, headers: { ...HEADERS, allow: "POST, OPTIONS" } });
-    if (!env.FLYBRAIN_BROWSER_API_TOKEN) return json({ error: "server_auth_not_configured" }, 503);
-    const auth = request.headers.get("authorization") || "";
-    const supplied = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    const expected = env.FLYBRAIN_BROWSER_API_TOKEN;
-    if (!supplied || supplied.length > 4096) return json({ error: "unauthorized" }, 401);
-    const encoder = new TextEncoder();
-    const [suppliedDigest, expectedDigest] = await Promise.all([
-      crypto.subtle.digest("SHA-256", encoder.encode(supplied)),
-      crypto.subtle.digest("SHA-256", encoder.encode(expected))
-    ]);
-    const a = new Uint8Array(suppliedDigest);
-    const b = new Uint8Array(expectedDigest);
-    let mismatch = 0;
-    for (let i = 0; i < a.length; i++) mismatch |= a[i] ^ b[i];
-    if (mismatch !== 0) return json({ error: "unauthorized" }, 401);
+    if (typeof env.FLYBRAIN_SESSION_SIGNING_KEY !== "string" || env.FLYBRAIN_SESSION_SIGNING_KEY.length < 32) {
+      return json({ error: "server_session_signing_not_configured" }, 503);
+    }
     if (!(request.headers.get("content-type") || "").toLowerCase().includes("application/json")) return json({ error: "content_type_must_be_application_json" }, 415);
     let rpc;
     try {
