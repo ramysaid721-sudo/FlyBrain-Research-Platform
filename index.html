@@ -164,8 +164,26 @@ if (recoveryTokenHash && recoveryType === 'recovery') {
     showRecovery();
   }
 } else {
-  const {data:{session:initial}}=await supabase.auth.getSession();
-  if(initial){showApp();await loadSummary();}else showLogin();
+  // Supabase's default recovery link may return either a PKCE ?code=... URL
+  // or an implicit-flow URL fragment. supabase-js processes these during
+  // initialization when detectSessionInUrl is enabled. Preserve the recovery
+  // screen even if the PASSWORD_RECOVERY event fired before the UI listener
+  // finished mounting.
+  const recoveryHashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const recoveryRedirect =
+    recoveryParams.get('type') === 'recovery' ||
+    recoveryHashParams.get('type') === 'recovery' ||
+    recoveryParams.has('code');
+  const {data:{session:initial},error:sessionError}=await supabase.auth.getSession();
+  if(sessionError) {
+    showLogin('Unable to restore the authentication session. Please request a fresh recovery email.');
+  } else if(initial && recoveryRedirect) {
+    showRecovery();
+  } else if(initial) {
+    showApp();await loadSummary();
+  } else {
+    showLogin();
+  }
 }
 </script>
 </body>
