@@ -47,7 +47,7 @@ function hostAllowed(host, patterns) {
 function validateUrl(value, patterns) {
   let url;
   try { url = new URL(value); } catch { throw new Error("Invalid URL"); }
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Only HTTP and HTTPS URLs are allowed");
+  if (url.protocol !== "https:") throw new Error("Only HTTPS URLs are allowed");
   if (url.username || url.password) throw new Error("URLs containing credentials are not allowed");
   if (!hostAllowed(url.hostname.toLowerCase(), patterns)) throw new Error("URL hostname is not covered by the session allowlist");
   return url.toString();
