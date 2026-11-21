@@ -127,7 +127,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: JSON_HEADERS });
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ status: "ok", service: "flybrain-cloudflare-worker", version: "0.16.1-staging", mode: "read-only-plus-guarded-browser", rate_limiter_binding: Boolean(env?.FLYBRAIN_PUBLIC_LIMITER) });
+      return json({ status: "ok", service: "flybrain-cloudflare-worker", version: "0.16.1-staging", mode: browserProxyConfigured(env) ? "read-only-plus-guarded-browser" : "read-only", browser_automation_configured: browserProxyConfigured(env), rate_limiter_binding: Boolean(env?.FLYBRAIN_PUBLIC_LIMITER) });
     }
     if (url.pathname !== "/mcp") return json({ error: "not_found" }, 404);
     if (request.method !== "POST") return new Response(null, { status: 405, headers: { ...JSON_HEADERS, allow: "POST, OPTIONS" } });
