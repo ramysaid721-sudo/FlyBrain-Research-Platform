@@ -1,0 +1,40 @@
+name: FlyBrain Runner Smoke Test
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flybrain-runner-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runner-smoke:
+    name: Single-runner diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify runner and Python runtime
+        run: |
+          python --version
+          python -c "import platform; print(platform.platform())"
+
+      - name: Compile the server bridge
+        run: python -m py_compile bridge/tool_manager.py bridge/mcp_server.py api/index.py
+
+      - name: Run repository-level policy and mock tests
+        run: |
+          python -m unittest discover -s tests -p 'test_tool_manager.py' -v
+          python -m unittest discover -s tests -p 'test_gemini_mock.py' -v
