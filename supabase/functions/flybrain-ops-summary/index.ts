@@ -1,93 +1,22 @@
 import { withSupabase } from "npm:@supabase/server@1";
-import {
-  isOriginAllowed,
-  isOwnerAllowed,
-  parseOwnerAllowlist,
-} from "./ops_summary_auth.ts";
+import { isOriginAllowed, isOwnerAllowed, parseOwnerAllowlist } from "./ops_summary_auth.ts";
 
-const JSON_HEADERS = {
-  "content-type": "application/json; charset=utf-8",
-  "cache-control": "no-store, max-age=0",
-  "pragma": "no-cache",
-  "x-content-type-options": "nosniff",
-  "referrer-policy": "no-referrer",
-};
+const BASE = "https://iudimypauqbkyvjuprgp.supabase.co";
+const KEY = "sb_publishable_UrLSWL3tU1HUlu9-Xc4cng_AoY9lwan";
+const PATH = "/functions/v1/flybrain-ops-summary";
+const HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>FlyBrain Operations</title><style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#131f31;--line:#2a3b52;--muted:#9bacc3;--text:#eef5ff;--green:#65d6bd}*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 80% -20%,#21445a,transparent 60%),var(--bg);color:var(--text);font:15px system-ui,sans-serif}.wrap{max-width:1100px;margin:auto;padding:24px 16px 50px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:22px}.brand{display:flex;gap:12px;align-items:center}.mark{background:linear-gradient(135deg,#65d6bd,#4284a9);color:#06131b;border-radius:12px;width:42px;height:42px;display:grid;place-items:center;font-weight:900;font-size:22px}h1{font-size:22px;margin:0}small,.muted{color:var(--muted)}button{background:#1d394b;color:var(--text);border:1px solid #45627a;border-radius:10px;padding:10px 14px;font-weight:650}button.primary{background:#176b60;border-color:#319b8c}.panel,.metric{background:linear-gradient(150deg,#162338,#101a2a);border:1px solid var(--line);border-radius:15px;padding:17px}.login{max-width:420px;margin:8vh auto}.login h2{margin:24px 0 4px}p{color:var(--muted);line-height:1.5}label{font-size:13px;color:#bdc9dc}input{width:100%;background:#091321;border:1px solid #34465f;border-radius:9px;padding:13px;color:white;margin:7px 0 13px;font:inherit}.error{color:#ff9999;min-height:22px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}.metric .k{font-size:12px;color:var(--muted)}.metric .v{font-size:26px;font-weight:750;margin-top:7px}.metric .s{font-size:12px;color:var(--muted);margin-top:4px}.sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.panel h2{font-size:16px;margin:0 0 14px}.rows{display:grid;grid-template-columns:1fr auto;gap:10px;font-size:13px}.rows div:nth-child(odd){color:var(--muted)}.rows div:nth-child(even){text-align:right;font-variant-numeric:tabular-nums}.status{border:1px solid var(--line);border-radius:20px;padding:7px 10px;font-size:12px}.hidden{display:none!important}.foot{font-size:12px;color:var(--muted);margin-top:16px}@media(max-width:700px){.grid{grid-template-columns:repeat(2,1fr)}.sections{grid-template-columns:1fr}.wrap{padding:16px 12px}}
+</style></head><body><main class="wrap">
+<section id="login" class="panel login"><div class="brand"><div class="mark">F</div><div><h1>FlyBrain Operations</h1><small>Staging · owner access only</small></div></div><h2>Sign in</h2><p>Use the Supabase Auth account authorized for operations. Public registration is disabled.</p><form id="form"><label>Email</label><input id="email" type="email" autocomplete="username" required><label>Password</label><input id="password" type="password" autocomplete="current-password" required><button class="primary" id="submit" style="width:100%">Sign in securely</button><div id="error" class="error"></div></form></section>
+<section id="app" class="hidden"><header class="top"><div class="brand"><div class="mark">F</div><div><h1>FlyBrain Operations</h1><small>Read-only · Supabase Staging</small></div></div><div style="display:flex;gap:8px;align-items:center"><span id="health" class="status">Connecting</span><button id="refresh">Refresh</button><button id="logout">Sign out</button></div></header>
+<div class="grid"><div class="metric"><div class="k">Queue depth</div><div class="v" id="q">—</div><div class="s" id="q2">Visible —</div></div><div class="metric"><div class="k">Completed tasks</div><div class="v" id="done">—</div><div class="s" id="failed">Failed —</div></div><div class="metric"><div class="k">Active leases</div><div class="v" id="lease">—</div><div class="s" id="expired">Expired —</div></div><div class="metric"><div class="k">Cron successes · 24h</div><div class="v" id="cronok">—</div><div class="s" id="cronruns">Runs —</div></div></div>
+<div class="sections"><div class="panel"><h2>Task execution</h2><div class="rows" id="tasks"></div></div><div class="panel"><h2>Latency · seconds</h2><div class="rows" id="latency"></div></div><div class="panel"><h2>Groups & integrity</h2><div class="rows" id="groups"></div></div><div class="panel"><h2>Worker events</h2><div class="rows" id="events"></div></div><div class="panel"><h2>Cron scheduler</h2><div class="rows" id="cron"></div></div><div class="panel"><h2>Telemetry coverage</h2><div class="rows" id="coverage"></div></div></div><div class="foot" id="updated">Waiting for metrics… · Auto refresh 30s</div></section></main>
+<script>
+(function(){var base=BASE,key=KEY,endpoint=PATH,session=null,timer=null;function el(x){return document.getElementById(x)}function put(id,pairs){var n=el(id);n.replaceChildren();pairs.forEach(function(p){var a=document.createElement("div"),b=document.createElement("div");a.textContent=p[0];b.textContent=p[1]===null||p[1]===undefined?"—":String(p[1]);n.append(a,b)})}function save(s){session=s;sessionStorage.setItem("fb_ops_session",JSON.stringify(s))}function clear(){session=null;sessionStorage.removeItem("fb_ops_session");if(timer)clearInterval(timer);el("app").classList.add("hidden");el("login").classList.remove("hidden")}async function auth(path,body){var r=await fetch(base+"/auth/v1/"+path,{method:"POST",headers:{"content-type":"application/json","apikey":key},body:JSON.stringify(body)}),d=await r.json().catch(function(){return{}});if(!r.ok)throw Error(d.msg||d.message||d.error_description||"Authentication failed");return d}async function token(){if(!session)throw Error("Sign in required");if(session.expires_at&&Date.now()/1000>session.expires_at-60)save(await auth("token?grant_type=refresh_token",{refresh_token:session.refresh_token}));return session.access_token}async function load(){el("health").textContent="Refreshing";try{var t=await token(),r=await fetch(endpoint+"?api=summary",{headers:{"apikey":key,"authorization":"Bearer "+t},cache:"no-store"});if(r.status===401){clear();el("error").textContent="Session expired. Sign in again.";return}if(r.status===403)throw Error("Authenticated, but this user is not on the operations owner allowlist.");var d=await r.json();if(!r.ok)throw Error(d.error||"Summary unavailable");var q=d.queue||{},a=d.tasks||{},s=a.by_status||{},l=d.leases||{},c=d.cron||{},v=d.latency_seconds||{},g=d.groups||{},e=d.events||{},z=d.event_coverage||{};el("q").textContent=q.queue_length??"—";el("q2").textContent="Visible "+(q.visible_length??"—")+" · Messages "+(q.total_messages??"—");el("done").textContent=s.completed??0;el("failed").textContent="Failed "+(s.failed??0)+" · Pending "+(s.pending??0);el("lease").textContent=l.active??0;el("expired").textContent="Expired "+(l.expired??0);el("cronok").textContent=c.last_24h_succeeded??"—";el("cronruns").textContent="Runs "+(c.last_24h_runs??"—")+" · Failed "+(c.last_24h_failed??"—");put("tasks",[["Pending",s.pending],["Running",s.running],["Completed",s.completed],["Failed",s.failed],["Average attempts",a.completed_average_attempts],["Max attempts",a.completed_max_attempts],["Oldest queued age (s)",q.oldest_message_age_seconds]]);put("latency",[["Samples",v.completed_count],["Average",v.average],["Median",v.median],["P95",v.p95],["Maximum",v.maximum]]);put("groups",[["Groups",g.group_count],["Expected tasks",g.expected_tasks],["Linked tasks",g.linked_tasks],["Empty groups",g.empty_groups],["Hash mismatches",g.capability_hash_mismatches]]);put("events",Object.entries(e).sort());put("cron",[["Job",c.job_name],["Schedule",c.schedule],["Active",c.active],["Last status",c.latest_run&&c.latest_run.status],["Duration ms",c.latest_run&&c.latest_run.duration_ms]]);put("coverage",[["Completed without events",z.completed_without_events],["Failed without events",z.failed_without_events],["Environment",d.environment]]);el("health").textContent="Live · owner verified";el("updated").textContent="Last updated "+new Date(d.generated_at).toLocaleString()+" · refresh 30s"}catch(e){el("health").textContent="Unavailable";el("updated").textContent=e.message}}el("form").addEventListener("submit",async function(e){e.preventDefault();el("submit").disabled=true;el("error").textContent="";try{save(await auth("token?grant_type=password",{email:el("email").value.trim(),password:el("password").value}));el("login").classList.add("hidden");el("app").classList.remove("hidden");await load();if(timer)clearInterval(timer);timer=setInterval(load,30000)}catch(e){el("error").textContent=e.message}finally{el("submit").disabled=false}});el("refresh").onclick=load;el("logout").onclick=async function(){try{await fetch(base+"/auth/v1/logout",{method:"POST",headers:{"apikey":key,"authorization":"Bearer "+session.access_token}})}catch(_){}clear()};try{var old=sessionStorage.getItem("fb_ops_session");if(old){session=JSON.parse(old);el("login").classList.add("hidden");el("app").classList.remove("hidden");load().then(function(){if(session)timer=setInterval(load,30000)})}}catch(_){clear()}})();
+</script></body></html>`.replace("BASE",JSON.stringify(BASE)).replace("KEY",JSON.stringify(KEY)).replace("PATH",JSON.stringify(PATH));
 
-function response(
-  body: Record<string, unknown>,
-  status: number,
-  origin: string | null,
-  allowedOrigin: string | null,
-): Response {
-  const headers = new Headers(JSON_HEADERS);
-  if (origin && allowedOrigin && isOriginAllowed(origin, allowedOrigin)) {
-    headers.set("access-control-allow-origin", allowedOrigin);
-    headers.set("vary", "Origin");
-    headers.set("access-control-allow-headers", "authorization, apikey, content-type, x-client-info");
-    headers.set("access-control-allow-methods", "GET, OPTIONS");
-  }
-  return new Response(JSON.stringify(body), { status, headers });
-}
-
-const authenticatedHandler = withSupabase(
-  { auth: "user" },
-  async (req, ctx) => {
-    const origin = req.headers.get("origin");
-    const allowedOrigin = Deno.env.get("FLYBRAIN_OPS_ALLOWED_ORIGIN");
-    if (!isOriginAllowed(origin, allowedOrigin)) {
-      return response({ error: "origin_not_allowed" }, 403, origin, allowedOrigin);
-    }
-
-    if (req.method !== "GET") {
-      return response({ error: "method_not_allowed" }, 405, origin, allowedOrigin);
-    }
-
-    let allowlist: Set<string> | null;
-    try {
-      allowlist = parseOwnerAllowlist(Deno.env.get("FLYBRAIN_OPS_OWNER_IDS"));
-    } catch {
-      return response({ error: "ops_auth_configuration_invalid" }, 503, origin, allowedOrigin);
-    }
-    if (!allowlist) {
-      return response({ error: "ops_auth_not_configured" }, 503, origin, allowedOrigin);
-    }
-
-    const userId = ctx.userClaims?.id ?? ctx.jwtClaims?.sub;
-    if (!isOwnerAllowed(userId, allowlist)) {
-      return response({ error: "forbidden" }, 403, origin, allowedOrigin);
-    }
-
-    const { data, error } = await ctx.supabaseAdmin.rpc("flybrain_ops_summary");
-    if (error || !data || typeof data !== "object" || Array.isArray(data)) {
-      // Do not forward database errors, SQL, or internal schema details.
-      return response({ error: "ops_summary_unavailable" }, 503, origin, allowedOrigin);
-    }
-
-    return response(data as Record<string, unknown>, 200, origin, allowedOrigin);
-  },
-);
-
-Deno.serve(async (req: Request) => {
-  const origin = req.headers.get("origin");
-  const allowedOrigin = Deno.env.get("FLYBRAIN_OPS_ALLOWED_ORIGIN");
-  if (req.method === "OPTIONS") {
-    if (!isOriginAllowed(origin, allowedOrigin)) {
-      return response({ error: "origin_not_allowed" }, 403, origin, allowedOrigin);
-    }
-    if (!origin || !allowedOrigin) {
-      return response({ error: "cors_not_configured" }, 503, origin, allowedOrigin);
-    }
-    return new Response(null, {
-      status: 204,
-      headers: {
-        ...JSON_HEADERS,
-        "access-control-allow-origin": allowedOrigin,
-        "access-control-allow-methods": "GET, OPTIONS",
-        "access-control-allow-headers": "authorization, apikey, content-type, x-client-info",
-        "access-control-max-age": "300",
-        "vary": "Origin",
-      },
-    });
-  }
-  return await authenticatedHandler(req);
-});
+const HEADERS = {"content-type":"application/json; charset=utf-8","cache-control":"no-store, max-age=0","pragma":"no-cache","x-content-type-options":"nosniff","referrer-policy":"no-referrer"};
+function json(body:Record<string,unknown>,status:number,origin:string|null,allowed:string|null){const h=new Headers(HEADERS);if(origin&&allowed&&isOriginAllowed(origin,allowed)){h.set("access-control-allow-origin",allowed);h.set("vary","Origin");h.set("access-control-allow-headers","authorization, apikey, content-type, x-client-info");h.set("access-control-allow-methods","GET, OPTIONS")}return new Response(JSON.stringify(body),{status,headers:h})}
+function allowedOrigin(){const configured=Deno.env.get("FLYBRAIN_OPS_ALLOWED_ORIGIN");if(configured)return configured;try{return new URL(Deno.env.get("SUPABASE_URL")??"").origin}catch{return null}}
+const handler=withSupabase({auth:"user"},async(req,ctx)=>{const origin=req.headers.get("origin"),allowed=allowedOrigin();if(!isOriginAllowed(origin,allowed))return json({error:"origin_not_allowed"},403,origin,allowed);if(req.method!=="GET")return json({error:"method_not_allowed"},405,origin,allowed);let owners:Set<string>|null;try{owners=parseOwnerAllowlist(Deno.env.get("FLYBRAIN_OPS_OWNER_IDS"))}catch{return json({error:"ops_auth_configuration_invalid"},503,origin,allowed)}if(!owners)return json({error:"ops_auth_not_configured"},503,origin,allowed);const uid=ctx.userClaims?.id??ctx.jwtClaims?.sub;if(!isOwnerAllowed(uid,owners))return json({error:"forbidden"},403,origin,allowed);const {data,error}=await ctx.supabaseAdmin.rpc("flybrain_ops_summary");if(error||!data||typeof data!=="object"||Array.isArray(data))return json({error:"ops_summary_unavailable"},503,origin,allowed);return json(data as Record<string,unknown>,200,origin,allowed)});
+Deno.serve(async(req:Request)=>{const u=new URL(req.url);if(req.method==="GET"&&u.pathname.endsWith(PATH)&&u.searchParams.get("api")!=="summary")return new Response(HTML,{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer","content-security-policy":"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"}});const origin=req.headers.get("origin"),allowed=allowedOrigin();if(req.method==="OPTIONS"){if(!isOriginAllowed(origin,allowed)||!origin||!allowed)return json({error:"origin_not_allowed"},403,origin,allowed);return new Response(null,{status:204,headers:{...HEADERS,"access-control-allow-origin":allowed,"access-control-allow-methods":"GET, OPTIONS","access-control-allow-headers":"authorization, apikey, content-type, x-client-info","access-control-max-age":"300","vary":"Origin"}})}return await handler(req)});
