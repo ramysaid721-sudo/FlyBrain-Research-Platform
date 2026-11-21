@@ -152,8 +152,21 @@ function update(d){
  $('cronSchedule').textContent=c.schedule||'—';const last=c.latest_run;$('cronLatest').textContent=last?((last.status||'')+' · '+(last.started_at?new Date(last.started_at).toLocaleString():'—')):'—';
  $('updatedAt').textContent=d.generated_at?new Date(d.generated_at).toLocaleString():'—';
 }
-const {data:{session:initial}}=await supabase.auth.getSession();
-if(initial){showApp();await loadSummary();}else showLogin();
+const recoveryParams = new URLSearchParams(window.location.search);
+const recoveryTokenHash = recoveryParams.get('token_hash');
+const recoveryType = recoveryParams.get('type');
+if (recoveryTokenHash && recoveryType === 'recovery') {
+  const { error } = await supabase.auth.verifyOtp({ token_hash: recoveryTokenHash, type: 'recovery' });
+  if (error) {
+    showLogin('The recovery link is invalid or expired. Request a new one and use the newest email only.');
+  } else {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showRecovery();
+  }
+} else {
+  const {data:{session:initial}}=await supabase.auth.getSession();
+  if(initial){showApp();await loadSummary();}else showLogin();
+}
 </script>
 </body>
 </html>
