@@ -14,8 +14,8 @@ concurrency:
 
 jobs:
   runner-smoke:
-    name: Single-runner diagnostic
-    runs-on: ubuntu-latest
+    name: Single-runner diagnostic (Ubuntu 22.04)
+    runs-on: ubuntu-22.04
     timeout-minutes: 8
     steps:
       - name: Checkout repository
