@@ -33,7 +33,7 @@ const authenticatedHandler = withSupabase(
   { auth: "user" },
   async (req, ctx) => {
     const origin = req.headers.get("origin");
-    const allowedOrigin = Deno.env.get("FLYBRAIN_OPS_ALLOWED_ORIGIN");
+    const allowedOrigin = Deno.env.get("FLYBRAIN_OPS_DASHBOARD_ORIGIN");
     if (!isOriginAllowed(origin, allowedOrigin)) {
       return response({ error: "origin_not_allowed" }, 403, origin, allowedOrigin);
     }
@@ -69,7 +69,7 @@ const authenticatedHandler = withSupabase(
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
-  const allowedOrigin = Deno.env.get("FLYBRAIN_OPS_ALLOWED_ORIGIN");
+  const allowedOrigin = Deno.env.get("FLYBRAIN_OPS_DASHBOARD_ORIGIN");
   if (req.method === "OPTIONS") {
     if (!isOriginAllowed(origin, allowedOrigin)) {
       return response({ error: "origin_not_allowed" }, 403, origin, allowedOrigin);
