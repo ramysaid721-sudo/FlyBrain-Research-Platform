@@ -1,3 +1,4 @@
+import { BROWSER_TOOLS, browserProxyConfigured, proxyBrowserTool } from "./browser-proxy.js";
 /**
  * FlyBrain-NOS / URCAL — Cloudflare MCP bridge
  * Version: 0.16.1-staging
@@ -20,7 +21,7 @@ const JSON_HEADERS = {
   "x-content-type-options": "nosniff",
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, OPTIONS",
-  "access-control-allow-headers": "content-type, accept, mcp-session-id, last-event-id"
+  "access-control-allow-headers": "authorization, content-type, accept, mcp-session-id, last-event-id"
 };
 function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...extraHeaders } });
@@ -60,7 +61,7 @@ async function retrieve(question) {
     return true;
   }).slice(0, 6);
 }
-async function handleMcp(request) {
+async function handleMcp(request, env) {
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (contentLength > 65536) return json({ error: "request_too_large" }, 413);
   if (!(request.headers.get("content-type") ?? "").toLowerCase().includes("application/json")) {
@@ -85,15 +86,22 @@ async function handleMcp(request) {
     }});
   }
   if (rpc.method === "ping") return json({ jsonrpc: "2.0", id: rpc.id, result: {} });
-  if (rpc.method === "tools/list") return json({ jsonrpc: "2.0", id: rpc.id, result: { tools: [{
+  if (rpc.method === "tools/list") {
+    const tools = [[{
     name: "ask_flybrain",
     title: "Ask FlyBrain research system",
     description: "Public read-only retrieval of source-labelled FlyBrain-NOS and URCAL project evidence. ChatGPT synthesizes returned excerpts. This tool cannot write, edit, or delete project data.",
     inputSchema: { type: "object", properties: { question: { type: "string", minLength: 1, maxLength: 12000 } }, required: ["question"], additionalProperties: false },
     annotations: { readOnlyHint: true, openWorldHint: true }
-  }] }});
+  }];
+    const availableTools = browserProxyConfigured(env) ? [...tools, ...BROWSER_TOOLS] : tools;
+    return json({ jsonrpc: "2.0", id: rpc.id, result: { tools: availableTools } });
+  }
   if (rpc.method === "tools/call") {
     const name = rpc.params?.name;
+    if (typeof name === "string" && name.startsWith("browser_session_")) {
+      return proxyBrowserTool(request, rpc, env);
+    }
     const question = rpc.params?.arguments?.question;
     if (name !== "ask_flybrain" || typeof question !== "string" || !question.trim() || question.length > 12000) {
       return rpcError(rpc.id, -32602, "Invalid tool or question");
@@ -135,7 +143,7 @@ export default {
       return json({ error: "rate_limiter_execution_failed", diagnostic: error instanceof Error ? error.message : "Unknown rate limiter error" }, 503);
     }
     try {
-      return await handleMcp(request);
+      return await handleMcp(request, env);
     } catch (error) {
       return json({ error: "mcp_internal_error", diagnostic: error instanceof Error ? error.message : "Unknown Worker error" }, 500);
     }
