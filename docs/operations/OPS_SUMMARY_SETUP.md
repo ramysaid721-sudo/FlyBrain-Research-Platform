@@ -12,30 +12,27 @@ Never put a Supabase secret/service-role key in browser code, a Vercel `NEXT_PUB
 
 ## Required Staging function secrets
 
-Set these in Supabase Dashboard → Project Settings / Edge Functions → Secrets for Staging only:
+Set these in Supabase Dashboard → Edge Functions → Secrets for Staging only:
 
 | Secret | Value |
 |---|---|
 | `FLYBRAIN_OPS_OWNER_IDS` | Comma-separated exact UUID(s) of explicitly authorized Supabase Auth users. Start with one owner UUID only. |
-| `FLYBRAIN_OPS_ALLOWED_ORIGIN` | Exact HTTPS origin of the eventual dashboard, e.g. `https://your-dashboard.example` (origin only; no path or trailing slash). |
+| `FLYBRAIN_OPS_DASHBOARD_ORIGIN` | Exact HTTPS origin of the dashboard: `https://ramysaid721-sudo.github.io` (origin only; no repository path or trailing slash). |
 
 Do not use email addresses as allowlist entries. Do not put UUIDs in Git. Do not enable public signup as a shortcut. Obtain the owner UUID from Supabase Dashboard → Authentication → Users, and verify that it is the account intended to administer this project.
 
-**Current audit finding:** the Staging Auth user table currently contains **zero users**. There is therefore no existing owner UUID to allowlist. An authorized project owner must first add the intended administrator through Authentication → Users → Add user (or the project's approved private sign-in process). Do not send the account password or a session token through chat. After the account exists, copy its UUID directly into the Staging secret value.
+**Current audit finding:** one Supabase Auth user was present during the latest check. The project owner reported configuring `FLYBRAIN_OPS_OWNER_IDS`; the secret value itself is not readable through the available connector and must remain private.
 
-The current connector does not expose a safe Edge Function secret-management action. Therefore these two values cannot be set by this repository change; they must be entered in the Supabase Dashboard by an authorized project owner. Do not send the UUID or any secret through chat.
-
-The existing Vercel domain `flybrain-research-mcp.vercel.app` currently serves the MCP gateway, not a dashboard. Its project-level password and SSO protection are disabled. It is **not** being assumed as the dashboard origin. Leave `FLYBRAIN_OPS_ALLOWED_ORIGIN` unset until a dedicated dashboard origin is selected and protected.
+The existing Vercel domain `flybrain-research-mcp.vercel.app` serves the MCP gateway, not the dashboard. It is not used as the dashboard origin.
 
 ## Deployment sequence (not yet performed)
 
-1. Confirm the owner UUID and the final dashboard HTTPS origin.
-2. Set the two Staging secrets above.
-3. Apply `supabase/migrations/20261121102000_add_flybrain_ops_summary_rpc.sql` to Staging through the approved migration process.
-4. Deploy `supabase/functions/flybrain-ops-summary/index.ts` with `verify_jwt=true`.
-5. Run `supabase/tests/flybrain_ops_summary.sql`.
-6. Test unauthenticated = 401; authenticated non-allowlisted = 403; allowlisted owner = 200.
-7. Verify that the response contains aggregates only and that no sensitive fields or secret material appear in logs or responses.
+1. Confirm the two Staging secrets exist with the intended values. Never disclose their values in chat.
+2. Apply `supabase/migrations/20261121102000_add_flybrain_ops_summary_rpc.sql` to Staging through the approved migration process.
+3. Deploy `supabase/functions/flybrain-ops-summary/index.ts` with `verify_jwt=true`.
+4. Run `supabase/tests/flybrain_ops_summary.sql`.
+5. Test unauthenticated = 401; authenticated non-allowlisted = 403; allowlisted owner = 200.
+6. Verify that the response contains aggregates only and that no sensitive fields or secret material appear in logs or responses.
 
 No step above should be performed against Production.
 
@@ -45,7 +42,7 @@ No step above should be performed against Production.
 
 - Requires a valid Supabase Auth user JWT.
 - Requires the JWT subject/user ID to match the server-side UUID allowlist.
-- Accepts browser requests only from the exact configured HTTPS origin.
+- Accepts browser requests only from the exact configured HTTPS dashboard origin.
 - Returns `Cache-Control: no-store`.
 - Returns aggregate queue, task, latency, lease, event, group-integrity and Cron metrics only.
 - Does not return task/group IDs, task payloads, user queries, result data, token hashes, capability tokens, SQL, Cron command text, database credentials, or authorization headers.
@@ -55,4 +52,4 @@ No step above should be performed against Production.
 
 The SQL was executed in a single `BEGIN … ROLLBACK` test transaction. The returned aggregate structure matched the intended schema against the live Staging data, and the transaction was rolled back. The migration is not applied persistently, the Edge Function is not deployed, and the endpoint is not yet callable.
 
-The owner UUID and dashboard origin are intentionally not guessed. They are the two remaining configuration values before deployment.
+The dashboard origin is now specified as the GitHub Pages origin. The source code reads the matching secret name `FLYBRAIN_OPS_DASHBOARD_ORIGIN`.
