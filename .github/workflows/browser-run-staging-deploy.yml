@@ -96,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           deploy_output="$(npx --yes wrangler@4.165.0 deploy --config cloudflare-browser-staging/wrangler.jsonc 2>&1 | tee /tmp/flybrain-browser-worker-deploy.log)"
-          browser_origin="$(printf '%s\\n' "$deploy_output" | grep -Eo 'https://[[:alnum:]-]+(\\.[[:alnum:]-]+)+\\.workers\\.dev' | tail -n 1 || true)"
+          browser_origin="$(printf '%s\n' "$deploy_output" | grep -Eo 'https://[[:alnum:]-]+(\.[[:alnum:]-]+)+\.workers\.dev' | tail -n 1 || true)"
           if [[ -z "$browser_origin" ]]; then
             echo "::error::Could not safely discover the deployed Browser Worker workers.dev URL; refusing to configure or deploy the gateway."
             exit 1
