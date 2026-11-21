@@ -1,23 +1,24 @@
 # FlyBrain Browser Worker — Staging
 
-An isolated, authenticated MCP browser service using Cloudflare Browser Run. It is separate from both the existing read-only retrieval bridge and the production Worker.
+An isolated internal MCP browser service using Cloudflare Browser Run. It is separate from both the existing read-only retrieval bridge and the production Worker.
 
 ## Capabilities
 
 - Start guarded remote Chromium sessions with an explicit hostname allowlist.
 - Navigate, inspect visible page text, click CSS selectors, enter text, press supported keys, capture screenshots, and close sessions. Click, type, and keypress require the explicit `allowSideEffects: true` argument.
-- Reconnect to an existing Browser Run session by session ID on each MCP request.
-- Use Cloudflare's Browser binding; no Cloudflare API token is needed at runtime for Browser Run calls. The separate Staging gateway forwards only the explicitly listed browser-session tools.
+- Reconnect to an existing Browser Run session by signed session ID on each MCP request.
+- Use Cloudflare's Browser binding. The Browser Worker is reached through a private Cloudflare Service binding from the Staging MCP gateway; it has no public `workers.dev` endpoint.
 
 ## Security model
 
-- All MCP requests require `Authorization: Bearer <FLYBRAIN_BROWSER_API_TOKEN>`.
-- The token is a Cloudflare Worker secret and must never be committed to Git.
+- `workers_dev` is disabled. Do not add a public route to this Worker.
+- The gateway authenticates the external caller with `FLYBRAIN_BROWSER_ACCESS_TOKEN` before invoking this Worker through the `FLYBRAIN_BROWSER_WORKER` Service binding.
+- Cloudflare Service bindings restrict invocation to Workers that explicitly declare the binding in the same Cloudflare account. The Browser Worker does not need a second bearer token or a public URL.
+- Set a high-entropy secret named `FLYBRAIN_SESSION_SIGNING_KEY` on this Worker (at least 32 characters). It is used only to sign and verify browser session handles. Never commit it or reuse the gateway client token.
 - Each new browser session requires 1–50 explicit hostname patterns. Cloudflare Browser Run guardrails enforce this allowlist for HTTP(S) requests throughout the session.
 - The session allowlist cannot be expanded after acquisition. Only HTTPS destinations are accepted.
 - Request body is limited to 64 KiB; extracted text and HTML are bounded.
 - Browser sessions use a 60-second inactivity keep-alive. Always call `browser_session_close` when finished.
-- The endpoint is not public-anonymous. Do not expose the token in URLs, client logs, screenshots, or page content.
 
 ## Free-tier budget protection
 
@@ -25,19 +26,16 @@ Cloudflare documents a Workers Free Browser Run allowance of 10 browser minutes 
 
 ## Configure
 
-1. In Cloudflare Workers & Pages, create a new Worker named `flybrain-browser-staging` using the Git repository.
-2. Set the Root directory to `cloudflare-browser-staging`.
-3. Use `npm run deploy` as the build/deploy command (or use the Git-integrated Workers Builds flow).
-4. Ensure the Worker has the Browser Run binding named `BROWSER`. The committed `wrangler.jsonc` declares it.
-5. Add a random, high-entropy secret named `FLYBRAIN_BROWSER_API_TOKEN` under Worker Settings → Variables and Secrets. Do not use the Cloudflare API token as this application token.
-6. Deploy the staging Worker only. Do not connect this project to the production Worker name.
+1. Create a distinct Worker named `flybrain-browser-staging` from this repository, with root directory `cloudflare-browser-staging`.
+2. Ensure the Worker has the Browser Run binding named `BROWSER`; the committed `wrangler.jsonc` declares it.
+3. Add the `FLYBRAIN_SESSION_SIGNING_KEY` secret in Worker Settings → Variables and Secrets.
+4. Keep `workers_dev` disabled and deploy this Worker before the Staging gateway. The gateway's Wrangler config declares the private service binding to this exact Worker name.
 
-If using Wrangler manually, set the secret with `npx wrangler secret put FLYBRAIN_BROWSER_API_TOKEN`, then deploy from this directory with `npx wrangler deploy`.
+For GitHub Actions deployment, store `FLYBRAIN_SESSION_SIGNING_KEY` as a GitHub Actions secret. For Cloudflare Workers Builds, configure it directly as a Worker secret instead.
 
-## MCP endpoint
+## Internal MCP interface
 
-- Health: `GET /health` (does not reveal the secret)
-- MCP: `POST /mcp` with JSON-RPC 2.0 and `Authorization: Bearer <FLYBRAIN_BROWSER_API_TOKEN>`
+The Browser Worker handles `POST /mcp` and `GET /health`, but these routes are intentionally not exposed on the public Internet. The Staging gateway invokes them through its `FLYBRAIN_BROWSER_WORKER` Service binding.
 
 ## Tools
 
@@ -55,9 +53,10 @@ If using Wrangler manually, set the secret with `npx wrangler secret put FLYBRAI
 ```sh
 npm install
 npm run check
+npm test
 ```
 
-Local syntax checking does not exercise the remote Browser Run binding. The Staging gateway separately tests bearer-token separation, endpoint validation, and JSON-RPC forwarding. A real deployment smoke test is required to validate account binding and Browser Run quota.
+Local syntax checking does not exercise the remote Browser Run binding. A real Staging deployment smoke test is required to validate account binding and Browser Run quota.
 
 ## Explicit non-goals
 
