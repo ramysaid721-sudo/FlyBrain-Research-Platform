@@ -60,7 +60,7 @@ test("oversized allowlists are rejected before issuing a session token", async (
 });
 
 
-test("Playwright fetch rejects non-allowlisted hosts before launching a browser", async () => {
+test("Playwright fetch rejects private numeric hosts before launching a browser", async () => {
   let browserTouched = false;
   const mockEnv = {
     BROWSER: {
@@ -68,8 +68,8 @@ test("Playwright fetch rejects non-allowlisted hosts before launching a browser"
     }
   };
   await assert.rejects(
-    () => callTool("browser_playwright_fetch", { url: "https://example.net/" }, mockEnv),
-    /allowlist/
+    () => callTool("browser_playwright_fetch", { url: "https://127.0.0.1/" }, mockEnv),
+    /allowedDomains/
   );
   assert.equal(browserTouched, false);
 });
