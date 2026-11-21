@@ -1,3 +1,5 @@
+import { launch } from "@cloudflare/playwright";
+
 const VERSION = "0.1.0-staging";
 const MAX_BODY = 65536;
 const MAX_TEXT = 24000;
@@ -205,6 +207,50 @@ async function waitForReady(cdp) {
 }
 async function callTool(name, args, env) {
   switch (name) {
+    case "browser_playwright_fetch": {
+      const parsed = new URL(args.url);
+      const host = parsed.hostname.toLowerCase();
+      const url = validateUrl(args.url, [host]);
+      const browser = await launch(env.BROWSER);
+      try {
+        const page = await browser.newPage();
+        await page.route("**/*", async (route) => {
+          try {
+            const requested = new URL(route.request().url());
+            if (requested.protocol === "https:" && requested.hostname.toLowerCase() === host) {
+              await route.continue();
+            } else {
+              await route.abort();
+            }
+          } catch {
+            await route.abort();
+          }
+        });
+        const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 12000 });
+        const finalUrl = page.url();
+        const final = new URL(finalUrl);
+        if (final.protocol !== "https:" || final.hostname.toLowerCase() !== host) {
+          throw new Error("Final navigation left the exact permitted hostname");
+        }
+        const pageData = await page.evaluate(() => ({
+          title: document.title || "",
+          text: document.body ? document.body.innerText : ""
+        }));
+        return textResult({
+          status: "completed",
+          provider: "cloudflare_browser_run",
+          engine: "playwright",
+          url: finalUrl,
+          title: String(pageData.title || "").slice(0, 500),
+          text: String(pageData.text || "").slice(0, MAX_TEXT),
+          httpStatus: response ? response.status() : null,
+          sideEffects: false,
+          contentIsUntrusted: true
+        });
+      } finally {
+        await browser.close();
+      }
+    }
     case "browser_session_open": {
       const allowedDomains = validateAllowlist(args.allowedDomains);
       const url = validateUrl(args.url, allowedDomains);
@@ -301,6 +347,7 @@ async function callTool(name, args, env) {
 }
 
 const TOOLS = [
+  { name: "browser_playwright_fetch", description: "Render and extract one public HTTPS page using Playwright on Cloudflare Browser Run. Requests are restricted to the exact target hostname; no form submission or account mutation is performed.", inputSchema: { type: "object", properties: { url: { type: "string", format: "uri", maxLength: 2048 } }, required: ["url"], additionalProperties: false }, annotations: { readOnlyHint: true, openWorldHint: true } },
   { name: "browser_session_open", description: "Start a guarded remote Chromium session. Supply a URL and explicit hostname allowlist. Returns a session ID and Live View URL.", inputSchema: { type: "object", properties: { url: { type: "string" }, allowedDomains: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 50 } }, required: ["url", "allowedDomains"], additionalProperties: false }, annotations: { readOnlyHint: false, openWorldHint: true } },
   { name: "browser_session_navigate", description: "Navigate an existing browser session. The session's original Cloudflare hostname guardrails remain enforced.", inputSchema: { type: "object", properties: { sessionId: { type: "string" }, url: { type: "string" } }, required: ["sessionId", "url"], additionalProperties: false } },
   { name: "browser_session_snapshot", description: "Read the current page URL, title, visible text, and optionally a bounded HTML excerpt.", inputSchema: { type: "object", properties: { sessionId: { type: "string" }, includeHtml: { type: "boolean" } }, required: ["sessionId"], additionalProperties: false }, annotations: { readOnlyHint: true } },
