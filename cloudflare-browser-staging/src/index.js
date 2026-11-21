@@ -329,7 +329,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: HEADERS });
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ status: "ok", service: "flybrain-browser-staging", version: VERSION, browserBinding: Boolean(env.BROWSER), sessionSigningConfigured: Boolean(env.FLYBRAIN_SESSION_SIGNING_KEY), mode: "guarded-browser-sessions" });
+      return json({ status: "ok", service: "flybrain-browser-staging", version: VERSION, browserBinding: Boolean(env.BROWSER), sessionSigningConfigured: typeof env.FLYBRAIN_SESSION_SIGNING_KEY === "string" && env.FLYBRAIN_SESSION_SIGNING_KEY.length >= 32, mode: "guarded-browser-sessions" });
     }
     if (url.pathname !== "/mcp") return json({ error: "not_found" }, 404);
     if (request.method !== "POST") return new Response(null, { status: 405, headers: { ...HEADERS, allow: "POST, OPTIONS" } });
