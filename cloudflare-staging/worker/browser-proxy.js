@@ -77,7 +77,7 @@ export async function proxyBrowserTool(request, rpc, env) {
   if (!browserProxyConfigured(env)) {
     return errorResponse(rpc?.id, -32000, "Browser Run service binding or client token is not configured");
   }
-  const supplied = (request.headers.get("authorization") || "").replace(/^Bearer\\s+/i, "");
+  const supplied = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!await constantTimeMatch(supplied, env.FLYBRAIN_BROWSER_ACCESS_TOKEN)) {
     return errorResponse(rpc?.id, -32001, "Browser automation access is unauthorized");
   }
