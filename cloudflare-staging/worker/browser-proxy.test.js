@@ -48,3 +48,19 @@ test("proxy refuses unlisted tool names and malformed backend replies", async ()
   const malformed = await proxyBrowserTool(request, rpc, env, async () => new Response("<html>bad</html>", { status: 200 }));
   assert.equal((await malformed.json()).error.code, -32004);
 });
+
+test("proxy cancels an oversized streaming response before buffering it in full", async () => {
+  let cancelled = false;
+  const request = new Request("https://staging.example/mcp", { headers: { authorization: "Bearer " + env.FLYBRAIN_BROWSER_ACCESS_TOKEN } });
+  const response = await proxyBrowserTool(request, rpc, env, async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(6_000_001));
+    },
+    cancel() {
+      cancelled = true;
+    }
+  }), { status: 200 }));
+  const payload = await response.json();
+  assert.equal(payload.error.code, -32002);
+  assert.equal(cancelled, true);
+});
