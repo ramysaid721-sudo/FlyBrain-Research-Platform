@@ -42,6 +42,26 @@ This is the preferred fallback when GitHub-hosted Actions runners cannot start. 
 
 Cloudflare's Git integration can run builds and deployments on push. This route avoids GitHub Actions runner allocation and does not require storing a Cloudflare API token or account ID in GitHub. Cloudflare still requires the one-time repository authorization and Worker configuration in its dashboard. The Browser Worker must be deployed before the gateway because the service-binding target must exist first.
 
+## Exact Cloudflare Workers Builds settings
+
+Configure both Git integrations to use branch `staging/browser-run-gateway-integration-2026-11-21` and deploy only after reviewing the Staging-only change set.
+
+**Browser Worker**
+- Root directory: `cloudflare-browser-staging`
+- Build command: `npm run build`
+- Deploy command: `npm run deploy`
+- Add secret `FLYBRAIN_SESSION_SIGNING_KEY` to this Worker before deployment.
+- Deploy this Worker first.
+
+**Staging MCP gateway**
+- Root directory: `cloudflare-staging`
+- Build command: `npm run build`
+- Deploy command: `npm run deploy`
+- Add secret `FLYBRAIN_BROWSER_ACCESS_TOKEN` to this Worker.
+- Deploy after the Browser Worker exists.
+
+Both package manifests pin Wrangler to `4.165.0` so the build and deploy commands use the same CLI version as the prepared GitHub Actions path. The Git integration must be configured to run build and deploy commands from each Worker's root directory. Keep Production Worker settings and branches untouched.
+
 ## Staging deployment trigger
 
 The prepared deploy workflow is restricted to this Staging branch. To trigger it from this PR branch without changing the default branch, push a relevant commit whose message explicitly contains `[deploy-staging-only]`. Ordinary commits do not deploy. The workflow also retains a manual `workflow_dispatch` gate for when GitHub exposes it from the default branch.
