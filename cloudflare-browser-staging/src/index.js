@@ -1,6 +1,6 @@
 import { launch } from "@cloudflare/playwright";
 
-const VERSION = "0.1.0-staging";
+const VERSION = "0.2.0-staging";
 const MAX_BODY = 65536;
 const MAX_TEXT = 24000;
 const SESSION_KEEPALIVE_MS = 60000;
