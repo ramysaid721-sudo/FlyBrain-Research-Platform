@@ -12,7 +12,7 @@
 .wrap{max-width:1180px;margin:auto;padding:28px 20px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px}.brand{display:flex;align-items:center;gap:13px}.mark{width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#6ee7c0,#6b8cff);display:grid;place-items:center;color:#081321;font-weight:900;font-size:20px}.brand h1{font-size:20px;margin:0;letter-spacing:.2px}.brand p{margin:2px 0 0;color:var(--muted);font-size:12px}.actions{display:flex;gap:10px;align-items:center}button{border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:10px 14px;border-radius:10px;font-weight:650;cursor:pointer}button.primary{background:var(--accent);border-color:var(--accent);color:#062018}button:disabled{opacity:.55;cursor:not-allowed}
 .pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);padding:6px 10px;border-radius:999px;color:var(--muted);font-size:12px}.dot{width:7px;height:7px;border-radius:50%;background:var(--amber)}.dot.ok{background:var(--accent)}.dot.bad{background:var(--danger)}
 .hero{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin:30px 0 20px}.hero h2{font-size:27px;margin:0 0 5px}.hero p{margin:0;color:var(--muted)}.stamp{color:var(--muted);font-size:12px;text-align:right}
-.login,.panel,.metric{background:linear-gradient(180deg,rgba(23,34,56,.95),rgba(18,26,44,.96));border:1px solid var(--line);border-radius:16px}.login{max-width:440px;margin:8vh auto;padding:28px}.login h2{margin:0 0 6px}.login p{color:var(--muted);margin:0 0 20px}.field{display:grid;gap:7px;margin:14px 0}.field label{font-size:13px;color:var(--muted)}input{width:100%;background:#0b1323;border:1px solid var(--line);border-radius:10px;padding:13px;color:var(--text);font:inherit}input:focus{outline:2px solid #6ee7c066;border-color:var(--accent)}.error{color:var(--danger);font-size:13px;min-height:20px;margin-top:10px}
+.login,.panel,.metric{background:linear-gradient(180deg,rgba(23,34,56,.95),rgba(18,26,44,.96));border:1px solid var(--line);border-radius:16px}.login{max-width:440px;margin:8vh auto;padding:28px}.login h2{margin:0 0 6px}.login p{color:var(--muted);margin:0 0 20px}.field{display:grid;gap:7px;margin:14px 0}.field label{font-size:13px;color:var(--muted)}input{width:100%;background:#0b1323;border:1px solid var(--line);border-radius:10px;padding:13px;color:var(--text);font:inherit}input:focus{outline:2px solid #6ee7c066;border-color:var(--accent)}.error{color:var(--danger);font-size:13px;min-height:20px;margin-top:10px}.auth-link{display:block;margin:14px auto 0;padding:4px;border:0;background:transparent;color:var(--blue);font-weight:600}.auth-note{font-size:13px;color:var(--muted);margin-top:12px;min-height:20px}
 .hidden{display:none!important}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metric{padding:18px;min-height:118px}.metric .k{font-size:12px;color:var(--muted);margin-bottom:12px}.metric .v{font-size:28px;font-weight:750;letter-spacing:-.6px}.metric .s{font-size:12px;color:var(--muted);margin-top:3px}.section{margin-top:18px}.section h3{font-size:15px;margin:0 0 12px}.panel{padding:18px}.split{display:grid;grid-template-columns:1.2fr 1fr;gap:14px}.rows{display:grid;gap:10px}.rowline{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #26355099;padding:8px 0}.rowline:last-child{border:0}.rowline span:first-child{color:var(--muted)}.rowline strong{font-variant-numeric:tabular-nums}.bar{height:7px;border-radius:20px;background:#263550;overflow:hidden;margin-top:7px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--blue));width:0}.notice{border:1px solid #745b2c;background:#332a19;color:#f7d99a;padding:12px 14px;border-radius:12px;margin:14px 0;font-size:13px}.footer{color:var(--muted);font-size:12px;margin-top:22px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
 @media(max-width:850px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.split{grid-template-columns:1fr}}@media(max-width:520px){.wrap{padding:18px 13px 40px}.top{align-items:flex-start}.brand h1{font-size:17px}.hero{display:block}.stamp{text-align:left;margin-top:10px}.grid{gap:9px}.metric{padding:14px;min-height:105px}.metric .v{font-size:24px}.actions button{padding:8px 10px}}
 </style>
@@ -27,6 +27,16 @@
     <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
     <button class="primary" id="loginButton" type="submit" style="width:100%">Sign in securely</button>
     <div id="loginError" class="error" role="alert"></div>
+  </form>
+  <button class="auth-link" id="forgotPasswordButton" type="button">Forgot password?</button>
+  <div id="resetMessage" class="auth-note" role="status" aria-live="polite"></div>
+  <form id="recoveryForm" class="hidden">
+    <h2 style="margin-top:25px">Choose a new password</h2>
+    <p>Enter and confirm your new password for this owner account.</p>
+    <div class="field"><label for="newPassword">New password</label><input id="newPassword" type="password" autocomplete="new-password" required></div>
+    <div class="field"><label for="confirmPassword">Confirm new password</label><input id="confirmPassword" type="password" autocomplete="new-password" required></div>
+    <button class="primary" id="savePasswordButton" type="submit" style="width:100%">Update password</button>
+    <div id="recoveryError" class="error" role="alert"></div>
   </form>
 </div>
 <div id="appView" class="hidden">
@@ -70,7 +80,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { 
 const $ = (id) => document.getElementById(id);
 const fmt = (v) => v === null || v === undefined ? '—' : Number(v).toLocaleString();
 const sec = (v) => v === null || v === undefined ? '—' : Number(v).toFixed(2) + ' s';
-function showLogin(message='') { $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); $('loginError').textContent=message; }
+function showLogin(message='') { $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); $('loginForm').classList.remove('hidden'); $('recoveryForm').classList.add('hidden'); $('forgotPasswordButton').classList.remove('hidden'); $('loginError').textContent=message; }
+function showRecovery() { $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); $('loginForm').classList.add('hidden'); $('forgotPasswordButton').classList.add('hidden'); $('resetMessage').textContent=''; $('recoveryForm').classList.remove('hidden'); $('recoveryError').textContent=''; }
 function showApp() { $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden'); }
 function status(ok, text) { $('healthDot').className='dot '+(ok?'ok':'bad'); $('healthText').textContent=text; }
 $('loginForm').addEventListener('submit', async (event) => {
@@ -79,9 +90,33 @@ $('loginForm').addEventListener('submit', async (event) => {
   catch(e){ showLogin(e?.message || 'Sign-in failed.'); }
   finally { $('loginButton').disabled=false; }
 });
+$('forgotPasswordButton').addEventListener('click', async()=>{
+  const email=$('email').value.trim();
+  if(!email){$('loginError').textContent='Enter your account email above, then select Forgot password.';$('email').focus();return;}
+  const button=$('forgotPasswordButton');button.disabled=true;$('loginError').textContent='';$('resetMessage').textContent='';
+  try {
+    const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+    if(error) throw error;
+    $('resetMessage').textContent='If this email belongs to an account, a password recovery link will be sent. Check your inbox and spam folder.';
+  } catch(e) { $('loginError').textContent=e?.message||'Unable to request password recovery.'; }
+  finally { button.disabled=false; }
+});
+$('recoveryForm').addEventListener('submit',async(event)=>{
+  event.preventDefault();
+  const password=$('newPassword').value, confirmation=$('confirmPassword').value;
+  if(password!==confirmation){$('recoveryError').textContent='The passwords do not match.';return;}
+  const button=$('savePasswordButton');button.disabled=true;$('recoveryError').textContent='';
+  try {
+    const {error}=await supabase.auth.updateUser({password});
+    if(error) throw error;
+    await supabase.auth.signOut();
+    $('newPassword').value='';$('confirmPassword').value='';showLogin('Password updated. Sign in with your new password.');
+  } catch(e) { $('recoveryError').textContent=e?.message||'Unable to update the password.'; }
+  finally { button.disabled=false; }
+});
 $('logoutButton').addEventListener('click', async()=>{await supabase.auth.signOut();showLogin();});
 $('refreshButton').addEventListener('click', loadSummary);
-supabase.auth.onAuthStateChange((_event, session)=>{ if(!session) showLogin(); });
+supabase.auth.onAuthStateChange((event, session)=>{ if(event==='PASSWORD_RECOVERY') showRecovery(); else if(!session) showLogin(); });
 function renderRows(target, obj) {
   const node=$(target); node.replaceChildren();
   const entries=Object.entries(obj||{}).sort((a,b)=>a[0].localeCompare(b[0]));
