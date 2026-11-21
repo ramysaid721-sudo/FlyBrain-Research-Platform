@@ -231,7 +231,8 @@ def browser_use_status() -> dict:
         "browser_mode": "local Chromium" if provider != "browser-use-cloud" else "Browser Use Cloud",
         "reason": reason, "persistent_profiles": False,
         "browserless": browserless_status(),
-        "note": "HTTP search and extraction work independently. Browserless rendered extraction is opt-in and disabled until its secret and usage flag are configured. Interactive browser control is not active until a live Browser Use task succeeds.",
+        "provider_router": browser_provider_status(),
+        "note": "HTTP extraction is the zero-cost first route; Cloudflare Browser Run + Playwright and Browserless are optional rendered fallbacks gated by explicit configuration and usage flags.",
     }
 
 
@@ -449,16 +450,121 @@ def run_browserless_fetch(url: str, output_format: str = "markdown", include_lin
     }
 
 
-def run_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
-    if output_format not in {"markdown", "text", "json"}:
-        raise ValueError("output_format must be markdown, text, or json")
-    if not isinstance(include_links, bool):
-        raise ValueError("include_links must be boolean")
-    selected_provider = os.environ.get("FLYBRAIN_WEB_FETCH_PROVIDER", "http").strip().lower()
-    if selected_provider == "browserless":
-        return run_browserless_fetch(url, output_format, include_links)
-    if selected_provider != "http":
-        raise BrowserUseNotConfigured("Unsupported FLYBRAIN_WEB_FETCH_PROVIDER; choose http or browserless")
+def cloudflare_browser_status() -> dict:
+    """Report Cloudflare Browser Run readiness without exposing credentials."""
+    endpoint = os.environ.get("FLYBRAIN_BROWSER_WORKER_URL", "").strip()
+    token_present = bool(os.environ.get("FLYBRAIN_BROWSER_API_TOKEN"))
+    usage_enabled = os.environ.get("FLYBRAIN_BROWSER_RUN_ALLOW_USAGE", "").strip().lower() == "true"
+    try:
+        parsed = urlparse(endpoint)
+        endpoint_valid = (
+            parsed.scheme == "https" and bool(parsed.hostname)
+            and not parsed.username and not parsed.password
+            and parsed.path.rstrip("/").endswith("/mcp")
+            and not parsed.query and not parsed.fragment
+        )
+    except Exception:
+        endpoint_valid = False
+    return {
+        "provider": "cloudflare_browser_run",
+        "engine": "playwright",
+        "endpoint_configured": bool(endpoint),
+        "endpoint_valid": endpoint_valid,
+        "token_present": token_present,
+        "usage_enabled": usage_enabled,
+        "configured": bool(endpoint_valid and token_present and usage_enabled),
+        "note": "Cloudflare Browser Run is skipped unless its HTTPS MCP endpoint, secret, and explicit zero-cost usage flag are configured.",
+    }
+
+
+def browser_provider_status() -> dict:
+    """Summarize provider readiness without returning secret values."""
+    return {
+        "strategy": os.environ.get("FLYBRAIN_WEB_FETCH_PROVIDER", "auto").strip().lower(),
+        "cloudflare": cloudflare_browser_status(),
+        "browserless": browserless_status(),
+        "http": {"provider": "http", "configured": True, "ready": True, "cost_usd": 0},
+        "playwright": {
+            "provider": "playwright",
+            "role": "automation_engine",
+            "hosted_by": "cloudflare_browser_run",
+            "ready": cloudflare_browser_status()["configured"],
+        },
+    }
+
+
+def _decode_cloudflare_tool_response(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned an invalid response")
+    result = payload.get("result")
+    if not isinstance(result, dict) or result.get("isError"):
+        contents = result.get("content", []) if isinstance(result, dict) else []
+        message = contents[0].get("text", "Cloudflare Browser Run tool failed") if contents else "Cloudflare Browser Run tool failed"
+        raise BrowserUseNotConfigured(str(message)[:500])
+    contents = result.get("content", [])
+    if not contents or not isinstance(contents[0], dict):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned no page content")
+    try:
+        data = json.loads(contents[0].get("text", "{}"))
+    except (TypeError, json.JSONDecodeError):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned malformed page content") from None
+    if not isinstance(data, dict):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned an unexpected page payload")
+    return data
+
+
+def run_cloudflare_playwright_fetch(url: str) -> dict:
+    """Fetch a public page with Playwright running on the Cloudflare Browser Run Worker."""
+    status = cloudflare_browser_status()
+    if not status["configured"]:
+        raise BrowserUseNotConfigured("Cloudflare Browser Run is not configured or its explicit usage flag is disabled")
+    target = _validate_url(url)
+    endpoint = os.environ["FLYBRAIN_BROWSER_WORKER_URL"].strip()
+    token = os.environ["FLYBRAIN_BROWSER_API_TOKEN"]
+    request_body = {
+        "jsonrpc": "2.0", "id": "flybrain-render-fetch",
+        "method": "tools/call",
+        "params": {"name": "browser_playwright_fetch", "arguments": {"url": target}},
+    }
+    request = Request(
+        endpoint, data=json.dumps(request_body).encode("utf-8"),
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=25) as response:
+            raw = response.read(2_000_001)
+            if len(raw) > 2_000_000:
+                raise ValueError("Cloudflare Browser Run response exceeded the 2 MB limit")
+            payload = json.loads(raw.decode("utf-8"))
+    except HTTPError as exc:
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned HTTP " + str(exc.code)) from None
+    except URLError as exc:
+        raise BrowserUseNotConfigured("Cloudflare Browser Run connection failed: " + type(exc.reason).__name__) from None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned invalid JSON") from None
+    data = _decode_cloudflare_tool_response(payload)
+    final_url = data.get("url", target)
+    if urlparse(final_url).hostname != urlparse(target).hostname or urlparse(final_url).scheme != "https":
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned a page outside the exact permitted hostname")
+    content = data.get("text", "")
+    if not isinstance(content, str):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned invalid page text")
+    return {
+        "status": "completed", "provider": "cloudflare_browser_run",
+        "engine": "playwright", "url": final_url,
+        "title": str(data.get("title", ""))[:500],
+        "content": content[:30000], "links": [],
+        "extraction_mode": "Playwright on Cloudflare Browser Run",
+        "side_effects": False, "content_is_untrusted": True,
+    }
+
+
+def _run_http_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
     final_url, content_type, body = _http_get(url, timeout=8, max_bytes=1_500_000)
     parser = _PageParser()
     parser.feed(body)
@@ -473,7 +579,7 @@ def run_browser_fetch(url: str, output_format: str = "markdown", include_links: 
                 except ValueError:
                     continue
                 links.append({"text": " ".join(item.get("text", "").split())[:300], "url": safe})
-    result = {
+    return {
         "status": "completed", "url": final_url,
         "title": parser.title.strip()[:500],
         "description": parser.description,
@@ -481,15 +587,71 @@ def run_browser_fetch(url: str, output_format: str = "markdown", include_links: 
         "content": content[:30000],
         "links": links,
         "extraction_mode": "HTTP HTML extraction (no JavaScript execution)",
+        "provider": "http", "side_effects": False, "content_is_untrusted": True,
     }
-    if output_format == "text":
-        result["content"] = content[:30000]
-    elif output_format == "markdown":
-        result["content"] = content[:30000]
-    elif output_format == "json":
-        result["content"] = content[:30000]
-    return result
 
+
+def run_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
+    """Automatically select the cheapest ready provider, then fail over safely."""
+    if output_format not in {"markdown", "text", "json"}:
+        raise ValueError("output_format must be markdown, text, or json")
+    if not isinstance(include_links, bool):
+        raise ValueError("include_links must be boolean")
+    target = _validate_url(url)
+    selected = os.environ.get("FLYBRAIN_WEB_FETCH_PROVIDER", "auto").strip().lower()
+    aliases = {"playwright": "cloudflare", "browser-run": "cloudflare", "browser_run": "cloudflare"}
+    selected = aliases.get(selected, selected)
+    if selected not in {"auto", "http", "browserless", "cloudflare"}:
+        raise BrowserUseNotConfigured("Unsupported FLYBRAIN_WEB_FETCH_PROVIDER; choose auto, http, cloudflare, browserless, or playwright")
+
+    errors = []
+    if selected == "http":
+        return _run_http_browser_fetch(target, output_format, include_links)
+    if selected == "browserless":
+        return run_browserless_fetch(target, output_format, include_links)
+    if selected == "cloudflare":
+        return run_cloudflare_playwright_fetch(target)
+
+    # Auto mode: use the free HTTP path first; render only when it appears necessary.
+    http_result = None
+    try:
+        http_result = _run_http_browser_fetch(target, output_format, include_links)
+        content = http_result.get("content", "")
+        compact = re.sub(r"\s+", " ", content).strip().lower()
+        javascript_shell = (
+            len(compact) < 220
+            or "enable javascript" in compact
+            or "javascript is required" in compact
+            or "please enable js" in compact
+            or ("<app-root" in compact and len(compact) < 1200)
+        )
+        if not javascript_shell:
+            return http_result
+    except Exception as exc:
+        errors.append("http: " + type(exc).__name__ + ": " + str(exc)[:180])
+
+    # Cloudflare Browser Run is attempted before Browserless; both require explicit
+    # configuration flags so automatic failover cannot silently create a bill.
+    if cloudflare_browser_status()["configured"]:
+        try:
+            result = run_cloudflare_playwright_fetch(target)
+            result["fallback_from"] = "http" if http_result else "http_error"
+            return result
+        except Exception as exc:
+            errors.append("cloudflare: " + type(exc).__name__ + ": " + str(exc)[:180])
+    if browserless_status()["configured"]:
+        try:
+            result = run_browserless_fetch(target, output_format, include_links)
+            result["fallback_from"] = "cloudflare_unavailable_or_failed"
+            return result
+        except Exception as exc:
+            errors.append("browserless: " + type(exc).__name__ + ": " + str(exc)[:180])
+
+    if http_result is not None:
+        http_result["rendering_fallbacks"] = errors
+        http_result["note"] = "The page was returned through the HTTP fallback; JavaScript-rendered content may be incomplete."
+        return http_result
+    raise BrowserUseNotConfigured("All configured page-fetch providers failed: " + " | ".join(errors[:3]))
 
 def run_browser_research(question: str, max_sources: int = 6) -> dict:
     if not isinstance(question, str) or not question.strip() or len(question) > 4000:
