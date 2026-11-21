@@ -8,7 +8,7 @@ create or replace function public.flybrain_ops_summary()
 returns jsonb
 language sql
 security definer
-set search_path = pg_catalog, public, private, pgmq, cron
+set search_path = pg_catalog
 as $function$
   select jsonb_build_object(
     'generated_at', now(),
