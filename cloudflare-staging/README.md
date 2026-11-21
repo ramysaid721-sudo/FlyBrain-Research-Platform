@@ -26,3 +26,7 @@ Cloudflare currently documents 10 browser minutes per day on Workers Free, up to
 Run the Browser Worker tests and the Staging gateway proxy tests. Perform Wrangler dry-runs for both Workers. After a real Staging deployment, run `scripts/smoke-test.sh` and verify that `/health`, MCP initialization, tool discovery, and a read-only browser snapshot work.
 
 No Production deployment, paid plan, or billing change is authorized by this configuration.
+
+
+## Staging deployment trigger
+The prepared deploy workflow is restricted to this Staging branch. To trigger it from this PR branch without changing the default branch, push a relevant commit whose message explicitly contains `[deploy-staging-only]`. Ordinary commits do not deploy. The workflow also retains a manual `workflow_dispatch` gate for when GitHub exposes it from the default branch.
