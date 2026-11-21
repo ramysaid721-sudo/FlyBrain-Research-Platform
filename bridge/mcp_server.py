@@ -6,6 +6,10 @@ from threading import Lock
 from wsgiref.simple_server import make_server
 from .chat_api import FlyBrainChatApp
 from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
+from .capability_mesh import TaskContractError, capability_registry, build_task_contract, plan_task_route, execute_read_only_capability
+from .service_emulation_governance import evaluate_component_review
+from .service_emulation_planner import plan_service_emulation
+from .koofr_webdav_adapter import (KoofrStorageError, koofr_webdav_status, koofr_webdav_probe, koofr_webdav_read, koofr_webdav_write)
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -36,12 +40,13 @@ class FlyBrainMCP:
         if path in {"/", "/health"} and method == "GET":
             from .browser_use_adapter import browser_use_status
             browser = browser_use_status()
+            koofr = koofr_webdav_status()
             return self.send(start, "200 OK", {
                 "status": "ok",
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route", "evaluate_component_review", "plan_service_emulation", "koofr_webdav_status", "koofr_webdav_probe", "koofr_webdav_read", "koofr_webdav_write"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
@@ -50,7 +55,8 @@ class FlyBrainMCP:
                     "interactive_browser": browser.get("interactive_browser_ready", False),
                     "persistent_browser_profiles": False
                 },
-                "browser_status": browser
+                "browser_status": browser,
+                "koofr_storage": koofr
             })
         if path != "/mcp":
             return self.app(env, start)
@@ -72,7 +78,7 @@ class FlyBrainMCP:
             params = req.get("params") or {}
             tool_name = params.get("name") if method == "tools/call" else None
             public_methods = {"initialize", "ping", "tools/list"}
-            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool"}
+            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool", "capability_registry", "plan_task_route", "execute_read_only_route"}
             public_request = method in public_methods or (method == "tools/call" and tool_name in public_tools)
             if not public_request and not hmac.compare_digest(supplied, self.token):
                 return self.send(start, "401 Unauthorized", {"error": "unauthorized"})
@@ -133,6 +139,75 @@ class FlyBrainMCP:
                          "source": {"type": "string", "maxLength": 300}},
                          "required": ["name"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "capability_registry", "title": "Federated capability registry",
+                     "description": "List known provider-neutral capabilities, data classifications, runtime states, and execution boundaries. Metadata only; does not invoke providers.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "plan_task_route", "title": "Plan a privacy-aware task route",
+                     "description": "Create a bounded zero-cost task contract and return eligible capability routes. Confidential and restricted data are forced to local-only routing. Planning only; no provider is invoked and no data is transferred.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "objective": {"type": "string", "minLength": 1, "maxLength": 4000},
+                         "data_classification": {"type": "string", "enum": ["public", "internal", "confidential", "restricted"], "default": "public"},
+                         "allowed_providers": {"type": "array", "items": {"type": "string", "maxLength": 80}, "maxItems": 8},
+                         "allow_network": {"type": "boolean", "default": False},
+                         "max_cost_usd": {"type": "number", "minimum": 0, "maximum": 0, "default": 0},
+                         "deadline_seconds": {"type": "integer", "minimum": 1, "maximum": 3600, "default": 60},
+                         "requested_capability": {"type": "string", "maxLength": 120}},
+                         "required": ["objective"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "execute_read_only_route", "title": "Execute approved public read-only capability",
+                     "description": "Execute either local source-labelled project-context retrieval or the built-in public HTTPS search/page-fetch adapter. External web access requires public data, explicit network permission, and the http_research provider. Local retrieval can handle confidential classification without network access. All routes are read-only and zero-cost; retrieved content is untrusted input.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "objective": {"type": "string", "minLength": 1, "maxLength": 4000},
+                         "capability_id": {"type": "string", "enum": ["flybrain.project_context", "web.public_search", "web.public_fetch"]},
+                         "data_classification": {"type": "string", "enum": ["public", "internal", "confidential"], "default": "public"},
+                         "allow_network": {"type": "boolean", "default": False},
+                         "allowed_providers": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 8},
+                         "arguments": {"type": "object", "properties": {
+                             "query": {"type": "string", "maxLength": 1500},
+                             "max_results": {"type": "integer", "minimum": 1, "maximum": 20},
+                             "url": {"type": "string", "format": "uri", "maxLength": 2048},
+                             "output_format": {"type": "string", "enum": ["markdown", "text", "json"]},
+                             "include_links": {"type": "boolean"},
+                             "limit": {"type": "integer", "minimum": 1, "maximum": 10}},
+                             "additionalProperties": False}},
+                         "required": ["objective", "capability_id", "allowed_providers", "arguments"],
+                         "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
+                    {"name": "evaluate_component_review", "title": "Evaluate FASE component compliance evidence",
+                     "description": "Apply the fail-closed FASE component provenance, licence, clean-room, patent-escalation, terms, and security evidence gate. This is an engineering review aid, not legal advice or patent clearance. Does not install, execute, or approve deployment of a component.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "component_record": {"type": "object", "description": "Component provenance and review evidence record"}},
+                         "required": ["component_record"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "plan_service_emulation", "title": "Plan a lawful service-emulation candidate",
+                     "description": "Rank caller-supplied service candidates only when provenance, licence, terms, security, cost, data classification, deployment mode, and operational evidence pass. Does not discover, install, execute, activate, or grant legal clearance to any service. Authenticated.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "request": {"type": "object", "description": "Requirements and candidate evidence for deterministic planning"}},
+                         "required": ["request"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "koofr_webdav_status", "title": "Koofr WebDAV connection status",
+                     "description": "Report whether Koofr WebDAV credentials are configured and whether writes are enabled. Never returns credentials or contacts Koofr.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "koofr_webdav_probe", "title": "Verify Koofr WebDAV connection",
+                     "description": "Perform one read-only PROPFIND request to the fixed Koofr WebDAV endpoint. Requires configured application-specific credentials. Does not upload, modify, or delete data.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
+                    {"name": "koofr_webdav_read", "title": "Read an object from Koofr",
+                     "description": "Read one object from the fixed Koofr WebDAV endpoint. Requires configured application-specific credentials. Returns base64 content and metadata; no writes are performed.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "object_key": {"type": "string", "minLength": 1, "maxLength": 1024}},
+                         "required": ["object_key"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": True}},
+                    {"name": "koofr_webdav_write", "title": "Write an object to Koofr",
+                     "description": "Upload one object only when server-side FLYBRAIN_KOOFR_WEBDAV_ALLOW_WRITE=true and this call explicitly sets confirm_write=true. Uses the fixed Koofr HTTPS endpoint, enforces a 1 MB limit, and never deletes or overwrites without this explicit call.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "object_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+                         "content_base64": {"type": "string", "maxLength": 1333344},
+                         "confirm_write": {"type": "boolean"}},
+                         "required": ["object_key", "content_base64", "confirm_write"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": False, "openWorldHint": True}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -163,6 +238,85 @@ class FlyBrainMCP:
                     except ToolPolicyError as exc:
                         raise ValueError(str(exc)) from exc
                     return self.send(start, "200 OK", self._tool_result(mid, assessed, assessed.get("status") == "blocked"))
+                if name == "capability_registry":
+                    if args:
+                        raise ValueError("capability_registry accepts no arguments")
+                    return self.send(start, "200 OK", self._tool_result(mid, capability_registry()))
+                if name == "plan_task_route":
+                    allowed = {"objective", "data_classification", "allowed_providers", "allow_network",
+                               "max_cost_usd", "deadline_seconds", "requested_capability"}
+                    if set(args) - allowed or not isinstance(args.get("objective"), str):
+                        raise ValueError("plan_task_route requires objective and accepts only documented contract fields")
+                    try:
+                        contract = build_task_contract(
+                            args["objective"], args.get("data_classification", "public"),
+                            args.get("allowed_providers", ["local"]), args.get("allow_network", False),
+                            args.get("max_cost_usd", 0.0), args.get("deadline_seconds", 60),
+                        )
+                        planned = plan_task_route(contract, args.get("requested_capability"))
+                    except TaskContractError as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, planned, planned.get("status") == "no_eligible_route"))
+                if name == "execute_read_only_route":
+                    required = {"objective", "capability_id", "allowed_providers", "arguments"}
+                    allowed = required | {"allow_network", "data_classification"}
+                    if not required.issubset(args) or set(args) - allowed or not isinstance(args.get("objective"), str):
+                        raise ValueError("execute_read_only_route requires objective, capability_id, allowed_providers, and arguments; only documented fields are accepted")
+                    try:
+                        contract = build_task_contract(
+                            args["objective"], args.get("data_classification", "public"),
+                            args["allowed_providers"], args.get("allow_network", False), 0.0, 60,
+                        )
+                        executed = execute_read_only_capability(
+                            contract, args["capability_id"], args["arguments"]
+                        )
+                    except (TaskContractError, ValueError) as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, executed, executed.get("status") == "error"))
+                if name == "evaluate_component_review":
+                    if set(args) != {"component_record"}:
+                        raise ValueError("evaluate_component_review requires only component_record")
+                    try:
+                        decision = evaluate_component_review(args["component_record"])
+                    except (ValueError, TypeError) as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, decision, decision.get("decision") == "blocked"))
+                if name == "koofr_webdav_status":
+                    if args:
+                        raise ValueError("koofr_webdav_status accepts no arguments")
+                    return self.send(start, "200 OK", self._tool_result(mid, koofr_webdav_status()))
+                if name == "koofr_webdav_probe":
+                    if args:
+                        raise ValueError("koofr_webdav_probe accepts no arguments")
+                    try:
+                        data = koofr_webdav_probe()
+                    except KoofrStorageError as exc:
+                        return self.send(start, "200 OK", self._tool_result(mid, {"status": "error", "error": str(exc)}, True))
+                    return self.send(start, "200 OK", self._tool_result(mid, data))
+                if name == "koofr_webdav_read":
+                    if set(args) != {"object_key"}:
+                        raise ValueError("koofr_webdav_read requires only object_key")
+                    try:
+                        data = koofr_webdav_read(args["object_key"])
+                    except (ValueError, KoofrStorageError) as exc:
+                        return self.send(start, "200 OK", self._tool_result(mid, {"status": "error", "error": str(exc)}, True))
+                    return self.send(start, "200 OK", self._tool_result(mid, data))
+                if name == "koofr_webdav_write":
+                    if set(args) != {"object_key", "content_base64", "confirm_write"}:
+                        raise ValueError("koofr_webdav_write requires object_key, content_base64, and confirm_write")
+                    try:
+                        data = koofr_webdav_write(args["object_key"], args["content_base64"], args["confirm_write"])
+                    except (ValueError, KoofrStorageError) as exc:
+                        return self.send(start, "200 OK", self._tool_result(mid, {"status": "error", "error": str(exc)}, True))
+                    return self.send(start, "200 OK", self._tool_result(mid, data))
+                if name == "plan_service_emulation":
+                    if set(args) != {"request"}:
+                        raise ValueError("plan_service_emulation requires only request")
+                    try:
+                        plan = plan_service_emulation(args["request"])
+                    except (ValueError, TypeError) as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, plan, plan.get("status") == "no_eligible_candidate"))
                 if name == "ask_flybrain":
                     q = args.get("question")
                     if not isinstance(q, str) or not q.strip() or len(q) > 12000:

@@ -12,7 +12,15 @@ PATCHES = {
     ROOT / "bridge" / "test_mcp_server.py": Path("components/FlyBrain-NOS/tests/test_mcp_server.py"),
     ROOT / "bridge" / "browser_use_adapter.py": Path("components/FlyBrain-NOS/flybrain_os/browser_use_adapter.py"),
     ROOT / "bridge" / "tool_manager.py": Path("components/FlyBrain-NOS/flybrain_os/tool_manager.py"),
+    ROOT / "bridge" / "capability_mesh.py": Path("components/FlyBrain-NOS/flybrain_os/capability_mesh.py"),
+    ROOT / "bridge" / "test_capability_mesh.py": Path("components/FlyBrain-NOS/tests/test_capability_mesh.py"),
     ROOT / "bridge" / "test_browser_use_adapter.py": Path("components/FlyBrain-NOS/tests/test_browser_use_adapter.py"),
+    ROOT / "bridge" / "service_emulation_governance.py": Path("components/FlyBrain-NOS/flybrain_os/service_emulation_governance.py"),
+    ROOT / "bridge" / "service_emulation_planner.py": Path("components/FlyBrain-NOS/flybrain_os/service_emulation_planner.py"),
+    ROOT / "bridge" / "koofr_webdav_adapter.py": Path("components/FlyBrain-NOS/flybrain_os/koofr_webdav_adapter.py"),
+    ROOT / "bridge" / "test_service_emulation_governance.py": Path("components/FlyBrain-NOS/tests/test_service_emulation_governance.py"),
+    ROOT / "bridge" / "test_service_emulation_planner.py": Path("components/FlyBrain-NOS/tests/test_service_emulation_planner.py"),
+    ROOT / "bridge" / "test_koofr_webdav_adapter.py": Path("components/FlyBrain-NOS/tests/test_koofr_webdav_adapter.py"),
 }
 
 def replace_once(path: Path, old: str, new: str) -> None:
@@ -31,6 +39,8 @@ def main() -> None:
     if not (source / "components/FlyBrain-NOS/pyproject.toml").is_file():
         raise SystemExit(f"not a FlyBrain release source tree: {source}")
     for origin, relative in PATCHES.items():
+        if not origin.is_file():
+            raise RuntimeError(f"missing bridge overlay source: {origin}")
         target = source / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(origin, target)

@@ -2,7 +2,7 @@ name: FlyBrain Research Platform CI
 
 on:
   push:
-    branches: [main, develop, "feat/**"]
+    branches: [main, develop, "feat/**", "flybrain-browser-worker-staging"]
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
@@ -64,7 +64,7 @@ jobs:
 
       - name: Run FlyBrain bridge and Browser Use adapter tests
         working-directory: .release/FlyBrain_Research_Platform_v0.14.0
-        run: python -m pytest -q components/FlyBrain-NOS/tests/test_chat_api.py components/FlyBrain-NOS/tests/test_mcp_server.py components/FlyBrain-NOS/tests/test_browser_use_adapter.py
+        run: python -m pytest -q components/FlyBrain-NOS/tests/test_chat_api.py components/FlyBrain-NOS/tests/test_mcp_server.py components/FlyBrain-NOS/tests/test_browser_use_adapter.py components/FlyBrain-NOS/tests/test_capability_mesh.py
 
       - name: Run FlyBrain and URCAL integration tests
         working-directory: .release/FlyBrain_Research_Platform_v0.14.0
