@@ -224,12 +224,15 @@ def browser_use_status() -> dict:
         reason = None if ready else "Cloud mode is disabled or its key is missing; cloud usage may incur charges."
     else:
         ready, reason = False, "Unsupported BROWSER_USE_PROVIDER."
+    cloudflare_ready = cloudflare_browser_status()["configured"]
+    interactive_ready = bool(ready or cloudflare_ready)
     return {
-        "installed": installed, "version": version, "provider": provider,
-        "ready": bool(ready), "interactive_browser_ready": bool(ready),
+        "installed": installed, "version": version,
+        "provider": "cloudflare_browser_run" if cloudflare_ready else provider,
+        "ready": interactive_ready, "interactive_browser_ready": interactive_ready,
         "web_search_ready": True, "web_fetch_ready": True,
-        "browser_mode": "local Chromium" if provider != "browser-use-cloud" else "Browser Use Cloud",
-        "reason": reason, "persistent_profiles": False,
+        "browser_mode": "Cloudflare Browser Run + Playwright" if cloudflare_ready else ("local Chromium" if provider != "browser-use-cloud" else "Browser Use Cloud"),
+        "reason": None if cloudflare_ready else reason, "persistent_profiles": False,
         "browserless": browserless_status(),
         "provider_router": browser_provider_status(),
         "note": "HTTP extraction is the zero-cost first route; Cloudflare Browser Run + Playwright and Browserless are optional rendered fallbacks gated by explicit configuration and usage flags.",
