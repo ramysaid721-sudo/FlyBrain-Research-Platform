@@ -9,6 +9,14 @@ on:
         type: choice
         options:
           - deploy-staging-only
+  push:
+    branches:
+      - staging/browser-run-gateway-integration-2026-11-21
+    paths:
+      - "cloudflare-browser-staging/**"
+      - "cloudflare-staging/worker/**"
+      - "cloudflare-staging/wrangler.jsonc"
+      - ".github/workflows/browser-run-staging-deploy.yml"
 
 permissions:
   contents: read
@@ -19,7 +27,12 @@ concurrency:
 
 jobs:
   deploy-staging:
-    if: github.ref == 'refs/heads/staging/browser-run-gateway-integration-2026-11-21' && inputs.confirm_staging_only == 'deploy-staging-only'
+    if: >-
+      github.ref == 'refs/heads/staging/browser-run-gateway-integration-2026-11-21' &&
+      (
+        (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-staging-only]')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.confirm_staging_only == 'deploy-staging-only')
+      )
     name: Validate, test, and deploy Staging Workers
     runs-on: ubuntu-24.04
     timeout-minutes: 25
