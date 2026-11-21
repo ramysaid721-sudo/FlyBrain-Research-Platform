@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+<meta name="description" content="Private, read-only FlyBrain staging operations dashboard.">
+<title>FlyBrain · Operations</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2c;--panel2:#172238;--line:#263550;--text:#edf3ff;--muted:#9aabc5;--accent:#6ee7c0;--blue:#86a9ff;--danger:#ff8585;--amber:#f4c46a}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0%,#172a45 0,transparent 42%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1180px;margin:auto;padding:28px 20px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px}.brand{display:flex;align-items:center;gap:13px}.mark{width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,#6ee7c0,#6b8cff);display:grid;place-items:center;color:#081321;font-weight:900;font-size:20px}.brand h1{font-size:20px;margin:0;letter-spacing:.2px}.brand p{margin:2px 0 0;color:var(--muted);font-size:12px}.actions{display:flex;gap:10px;align-items:center}button{border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:10px 14px;border-radius:10px;font-weight:650;cursor:pointer}button.primary{background:var(--accent);border-color:var(--accent);color:#062018}button:disabled{opacity:.55;cursor:not-allowed}
+.pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);padding:6px 10px;border-radius:999px;color:var(--muted);font-size:12px}.dot{width:7px;height:7px;border-radius:50%;background:var(--amber)}.dot.ok{background:var(--accent)}.dot.bad{background:var(--danger)}
+.hero{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin:30px 0 20px}.hero h2{font-size:27px;margin:0 0 5px}.hero p{margin:0;color:var(--muted)}.stamp{color:var(--muted);font-size:12px;text-align:right}
+.login,.panel,.metric{background:linear-gradient(180deg,rgba(23,34,56,.95),rgba(18,26,44,.96));border:1px solid var(--line);border-radius:16px}.login{max-width:440px;margin:8vh auto;padding:28px}.login h2{margin:0 0 6px}.login p{color:var(--muted);margin:0 0 20px}.field{display:grid;gap:7px;margin:14px 0}.field label{font-size:13px;color:var(--muted)}input{width:100%;background:#0b1323;border:1px solid var(--line);border-radius:10px;padding:13px;color:var(--text);font:inherit}input:focus{outline:2px solid #6ee7c066;border-color:var(--accent)}.error{color:var(--danger);font-size:13px;min-height:20px;margin-top:10px}
+.hidden{display:none!important}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metric{padding:18px;min-height:118px}.metric .k{font-size:12px;color:var(--muted);margin-bottom:12px}.metric .v{font-size:28px;font-weight:750;letter-spacing:-.6px}.metric .s{font-size:12px;color:var(--muted);margin-top:3px}.section{margin-top:18px}.section h3{font-size:15px;margin:0 0 12px}.panel{padding:18px}.split{display:grid;grid-template-columns:1.2fr 1fr;gap:14px}.rows{display:grid;gap:10px}.rowline{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #26355099;padding:8px 0}.rowline:last-child{border:0}.rowline span:first-child{color:var(--muted)}.rowline strong{font-variant-numeric:tabular-nums}.bar{height:7px;border-radius:20px;background:#263550;overflow:hidden;margin-top:7px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--blue));width:0}.notice{border:1px solid #745b2c;background:#332a19;color:#f7d99a;padding:12px 14px;border-radius:12px;margin:14px 0;font-size:13px}.footer{color:var(--muted);font-size:12px;margin-top:22px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+@media(max-width:850px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.split{grid-template-columns:1fr}}@media(max-width:520px){.wrap{padding:18px 13px 40px}.top{align-items:flex-start}.brand h1{font-size:17px}.hero{display:block}.stamp{text-align:left;margin-top:10px}.grid{gap:9px}.metric{padding:14px;min-height:105px}.metric .v{font-size:24px}.actions button{padding:8px 10px}}
+</style>
+</head>
+<body>
+<div id="loginView" class="login">
+  <div class="brand"><div class="mark">F</div><div><h1>FlyBrain Operations</h1><p>Staging · Owner access only</p></div></div>
+  <h2 style="margin-top:25px">Sign in</h2>
+  <p>Use the owner account created in Supabase Authentication. Public registration is not available.</p>
+  <form id="loginForm">
+    <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="username" required></div>
+    <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+    <button class="primary" id="loginButton" type="submit" style="width:100%">Sign in securely</button>
+    <div id="loginError" class="error" role="alert"></div>
+  </form>
+</div>
+<div id="appView" class="hidden">
+  <div class="wrap">
+    <header class="top">
+      <div class="brand"><div class="mark">F</div><div><h1>FlyBrain Operations</h1><p>Read-only control plane · Supabase Staging</p></div></div>
+      <div class="actions"><span class="pill"><i id="healthDot" class="dot"></i><span id="healthText">Connecting</span></span><button id="refreshButton">Refresh</button><button id="logoutButton">Sign out</button></div>
+    </header>
+    <section class="hero"><div><h2>System overview</h2><p>Operational telemetry only. No task payloads, research queries, result bodies, or access tokens.</p></div><div class="stamp">Environment: <strong>STAGING</strong><br>Updated: <span id="updatedAt">—</span></div></section>
+    <div id="setupNotice" class="notice hidden">The dashboard UI is online, but the protected summary endpoint is not ready yet. Confirm the staging migration, Edge Function deployment, and exact allowed origin configuration.</div>
+    <section class="grid">
+      <article class="metric"><div class="k">Queue depth</div><div class="v" id="queueDepth">—</div><div class="s">Visible: <span id="visibleDepth">—</span> · Total messages: <span id="totalMessages">—</span></div></article>
+      <article class="metric"><div class="k">Completed tasks</div><div class="v" id="completedTasks">—</div><div class="s">Across recorded task history</div></article>
+      <article class="metric"><div class="k">Failed tasks</div><div class="v" id="failedTasks">—</div><div class="s">Recorded failures</div></article>
+      <article class="metric"><div class="k">Active leases</div><div class="v" id="activeLeases">—</div><div class="s">Expired leases: <span id="expiredLeases">—</span></div></article>
+    </section>
+    <section class="section split">
+      <div class="panel"><h3>Task execution</h3><div class="rows" id="taskRows"><div class="rowline"><span>Waiting for secure data</span><strong>—</strong></div></div></div>
+      <div class="panel"><h3>Latency · completed tasks</h3><div class="rows">
+        <div class="rowline"><span>Average</span><strong id="latAvg">—</strong></div><div class="rowline"><span>Median</span><strong id="latMedian">—</strong></div><div class="rowline"><span>95th percentile</span><strong id="latP95">—</strong></div><div class="rowline"><span>Maximum</span><strong id="latMax">—</strong></div>
+      </div></div>
+    </section>
+    <section class="section split">
+      <div class="panel"><h3>Queue & event telemetry</h3><div class="rows" id="eventRows"><div class="rowline"><span>Events</span><strong>—</strong></div></div></div>
+      <div class="panel"><h3>Task groups integrity</h3><div class="rows">
+        <div class="rowline"><span>Groups</span><strong id="groupCount">—</strong></div><div class="rowline"><span>Expected / linked tasks</span><strong id="groupLinks">—</strong></div><div class="rowline"><span>Empty groups</span><strong id="emptyGroups">—</strong></div><div class="rowline"><span>Capability hash mismatches</span><strong id="hashMismatch">—</strong></div>
+      </div></div>
+    </section>
+    <section class="section panel"><h3>Cron reliability · last 24 hours</h3><div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div><div class="k">Runs</div><div class="v" id="cronRuns">—</div></div><div><div class="k">Succeeded</div><div class="v" id="cronOk">—</div></div><div><div class="k">Failed</div><div class="v" id="cronFailed">—</div></div>
+    </div><div class="rowline" style="margin-top:14px"><span>Worker schedule</span><strong id="cronSchedule">—</strong></div><div class="rowline"><span>Latest run</span><strong id="cronLatest">—</strong></div></section>
+    <footer class="footer"><span>FlyBrain Research Platform · Operations UI</span><span>Read-only · Owner allowlist protected · No production controls</span></footer>
+  </div>
+</div>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8';
+const SUPABASE_URL = 'https://iudimypauqbkyvjuprgp.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_UrLSWL3tU1HUlu9-Xc4cng_AoY9lwan';
+const SUMMARY_URL = SUPABASE_URL + '/functions/v1/flybrain-ops-summary';
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+const $ = (id) => document.getElementById(id);
+const fmt = (v) => v === null || v === undefined ? '—' : Number(v).toLocaleString();
+const sec = (v) => v === null || v === undefined ? '—' : Number(v).toFixed(2) + ' s';
+function showLogin(message='') { $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); $('loginError').textContent=message; }
+function showApp() { $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden'); }
+function status(ok, text) { $('healthDot').className='dot '+(ok?'ok':'bad'); $('healthText').textContent=text; }
+$('loginForm').addEventListener('submit', async (event) => {
+  event.preventDefault(); $('loginButton').disabled=true; $('loginError').textContent='';
+  try { const {error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value}); if(error) throw error; await loadSummary(); }
+  catch(e){ showLogin(e?.message || 'Sign-in failed.'); }
+  finally { $('loginButton').disabled=false; }
+});
+$('logoutButton').addEventListener('click', async()=>{await supabase.auth.signOut();showLogin();});
+$('refreshButton').addEventListener('click', loadSummary);
+supabase.auth.onAuthStateChange((_event, session)=>{ if(!session) showLogin(); });
+function renderRows(target, obj) {
+  const node=$(target); node.replaceChildren();
+  const entries=Object.entries(obj||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+  if(!entries.length){node.textContent='No event data';return;}
+  for(const [k,v] of entries){const line=document.createElement('div');line.className='rowline';const label=document.createElement('span');label.textContent=k.replaceAll('_',' ');const value=document.createElement('strong');value.textContent=fmt(v);line.append(label,value);node.append(line);}
+}
+async function loadSummary(){
+  $('refreshButton').disabled=true; status(false,'Checking access');
+  try {
+    const {data:{session}}=await supabase.auth.getSession();
+    if(!session){showLogin();return;}
+    const {data:{user},error:userError}=await supabase.auth.getUser();
+    if(userError||!user) throw new Error('Your session is not valid. Please sign in again.');
+    const response=await fetch(SUMMARY_URL,{method:'GET',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,Authorization:'Bearer '+session.access_token}});
+    const body=await response.json().catch(()=>({}));
+    if(response.status===401){await supabase.auth.signOut();throw new Error('Session expired. Sign in again.');}
+    if(response.status===403) throw new Error('Access denied. This account is not allowed, or this site origin is not configured.');
+    if(!response.ok) throw new Error(body.error||'Operations summary is not deployed or is unavailable.');
+    update(body);showApp();status(true,'Staging connected');$('setupNotice').classList.add('hidden');
+  } catch(e) { showApp();status(false,'Not connected');$('setupNotice').classList.remove('hidden');$('setupNotice').textContent=e?.message||'Unable to load staging telemetry.'; }
+  finally { $('refreshButton').disabled=false; }
+}
+function update(d){
+ const q=d.queue||{},t=d.tasks||{},l=d.leases||{},lat=d.latency_seconds||{},g=d.groups||{},c=d.cron||{};
+ $('queueDepth').textContent=fmt(q.queue_length);$('visibleDepth').textContent=fmt(q.visible_length);$('totalMessages').textContent=fmt(q.total_messages);
+ const states=t.by_status||{};$('completedTasks').textContent=fmt(states.completed||0);$('failedTasks').textContent=fmt(states.failed||0);
+ $('activeLeases').textContent=fmt(l.active);$('expiredLeases').textContent=fmt(l.expired);
+ $('latAvg').textContent=sec(lat.average);$('latMedian').textContent=sec(lat.median);$('latP95').textContent=sec(lat.p95);$('latMax').textContent=sec(lat.maximum);
+ renderRows('taskRows',states);renderRows('eventRows',d.events||{});
+ $('groupCount').textContent=fmt(g.group_count);$('groupLinks').textContent=fmt(g.expected_tasks)+' / '+fmt(g.linked_tasks);
+ $('emptyGroups').textContent=fmt(g.empty_groups);$('hashMismatch').textContent=fmt(g.capability_hash_mismatches);
+ $('cronRuns').textContent=fmt(c.last_24h_runs);$('cronOk').textContent=fmt(c.last_24h_succeeded);$('cronFailed').textContent=fmt(c.last_24h_failed);
+ $('cronSchedule').textContent=c.schedule||'—';const last=c.latest_run;$('cronLatest').textContent=last?((last.status||'')+' · '+(last.started_at?new Date(last.started_at).toLocaleString():'—')):'—';
+ $('updatedAt').textContent=d.generated_at?new Date(d.generated_at).toLocaleString():'—';
+}
+const {data:{session:initial}}=await supabase.auth.getSession();
+if(initial){showApp();await loadSummary();}else showLogin();
+</script>
+</body>
+</html>
