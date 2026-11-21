@@ -174,9 +174,10 @@ async function callTool(name:string,args:any){
 }
 Deno.serve(async(req:Request)=>{
   const url=new URL(req.url);
+  const route=url.pathname.replace(/^\/(?:functions\/v1\/)?flybrain-browserbase-staging(?=\/|$)/,"")||"/";
   if(req.method==="OPTIONS")return new Response(null,{status:204,headers:HEADERS});
-  if(url.pathname==="/health"&&req.method==="GET")return json({status:"ok",service:"flybrain-browserbase-staging",browserbaseConfigured:Boolean(Deno.env.get("BROWSERBASE_API_KEY")),accessTokenConfigured:Boolean(Deno.env.get("FLYBRAIN_BROWSER_ACCESS_TOKEN")),sessionSigningConfigured:Boolean((Deno.env.get("FLYBRAIN_SESSION_SIGNING_KEY")||"").length>=32)});
-  if(url.pathname!=="/mcp")return json({error:"not_found"},404);
+  if(route==="/health"&&req.method==="GET")return json({status:"ok",service:"flybrain-browserbase-staging",browserbaseConfigured:Boolean(Deno.env.get("BROWSERBASE_API_KEY")),accessTokenConfigured:Boolean(Deno.env.get("FLYBRAIN_BROWSER_ACCESS_TOKEN")),sessionSigningConfigured:Boolean((Deno.env.get("FLYBRAIN_SESSION_SIGNING_KEY")||"").length>=32)});
+  if(route!=="/mcp")return json({error:"not_found"},404);
   if(req.method!=="POST")return new Response(null,{status:405,headers:{...HEADERS,allow:"POST, OPTIONS"}});
   if(!isAuthorized(req))return json({error:"unauthorized"},401);
   const raw=await req.text();if(new TextEncoder().encode(raw).length>MAX_BODY)return json({error:"request_too_large"},413);
