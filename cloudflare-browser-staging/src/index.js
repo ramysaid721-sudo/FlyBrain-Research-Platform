@@ -220,12 +220,16 @@ async function callTool(name, args, env) {
           const title = await evaluate(cdp, "document.title");
           return { title, readyState };
         });
-        const liveView = await env.BROWSER.getLiveView(session.sessionId);
+        const pageTarget = session.targets?.find((target) => target.type === "page");
+        const liveView = await env.BROWSER.getLiveView(
+          session.sessionId,
+          pageTarget?.id ? { targetId: pageTarget.id, mode: "devtools" } : undefined
+        );
         const sessionToken = await signSessionToken(env, session.sessionId, allowedDomains);
         return textResult({
           status: "opened",
           sessionId: sessionToken,
-          targetId: session.targets?.find((t) => t.type === "page")?.targetId ?? null,
+          targetId: pageTarget?.id ?? null,
           url,
           title: result.title || "",
           readyState: result.readyState,
