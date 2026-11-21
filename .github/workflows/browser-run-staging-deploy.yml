@@ -1,0 +1,110 @@
+name: FlyBrain Browser Run — Manual Staging Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging_only:
+        description: "Confirm deployment to the two Staging Workers only"
+        required: true
+        type: choice
+        options:
+          - deploy-staging-only
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flybrain-browser-run-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    name: Validate, test, and deploy Staging Workers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      FLYBRAIN_BROWSER_API_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_API_TOKEN }}
+      FLYBRAIN_BROWSER_ACCESS_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_ACCESS_TOKEN }}
+      BROWSER_AUTOMATION_TOKEN: ${{ secrets.BROWSER_AUTOMATION_TOKEN }}
+      BROWSER_AUTOMATION_MCP_URL: ${{ secrets.BROWSER_AUTOMATION_MCP_URL }}
+    steps:
+      - name: Check out selected Staging branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate Staging-only configuration and credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID FLYBRAIN_BROWSER_API_TOKEN FLYBRAIN_BROWSER_ACCESS_TOKEN BROWSER_AUTOMATION_TOKEN BROWSER_AUTOMATION_MCP_URL; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required GitHub Actions secret is missing: $name"
+              exit 1
+            fi
+          done
+          if [[ ${#FLYBRAIN_BROWSER_API_TOKEN} -lt 32 || ${#FLYBRAIN_BROWSER_ACCESS_TOKEN} -lt 32 ]]; then
+            echo "::error::Browser application tokens must each contain at least 32 characters."
+            exit 1
+          fi
+          if [[ "$FLYBRAIN_BROWSER_API_TOKEN" != "$BROWSER_AUTOMATION_TOKEN" ]]; then
+            echo "::error::The Browser Worker API token and gateway backend token must match."
+            exit 1
+          fi
+          if [[ "$FLYBRAIN_BROWSER_API_TOKEN" == "$FLYBRAIN_BROWSER_ACCESS_TOKEN" ]]; then
+            echo "::error::The gateway client token must differ from the Browser Worker/backend token."
+            exit 1
+          fi
+          node --input-type=module -e '
+            const u = new URL(process.env.BROWSER_AUTOMATION_MCP_URL);
+            if (u.protocol !== "https:" || !u.hostname.endsWith(".workers.dev") ||
+                u.pathname !== "/mcp" || u.username || u.password || u.search || u.hash) {
+              console.error("BROWSER_AUTOMATION_MCP_URL must be an HTTPS workers.dev /mcp endpoint.");
+              process.exit(1);
+            }
+          '
+          grep -q '"name": "flybrain-browser-staging"' cloudflare-browser-staging/wrangler.jsonc
+          grep -q '"name": "flybrain-research-platform-staging"' cloudflare-staging/wrangler.jsonc
+          echo "Configuration validation passed. No secret values were printed."
+
+      - name: Run Browser Worker tests
+        working-directory: cloudflare-browser-staging
+        run: node --test src/index.test.js
+
+      - name: Check Browser Worker syntax
+        run: node --check cloudflare-browser-staging/src/index.js
+
+      - name: Run Staging gateway proxy tests
+        run: node --test cloudflare-staging/worker/browser-proxy.test.js
+
+      - name: Dry-run Browser Worker bundle
+        run: npx --yes wrangler@4.165.0 deploy --dry-run --config cloudflare-browser-staging/wrangler.jsonc --outdir /tmp/flybrain-browser-worker-build
+
+      - name: Dry-run Staging gateway bundle
+        run: npx --yes wrangler@4.165.0 deploy --dry-run --config cloudflare-staging/wrangler.jsonc --outdir /tmp/flybrain-staging-gateway-build
+
+      - name: Set Browser Worker application secret
+        run: printf '%s' "$FLYBRAIN_BROWSER_API_TOKEN" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_BROWSER_API_TOKEN --config cloudflare-browser-staging/wrangler.jsonc
+
+      - name: Deploy Browser Worker to Staging
+        run: npx --yes wrangler@4.165.0 deploy --config cloudflare-browser-staging/wrangler.jsonc
+
+      - name: Configure Staging gateway secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$FLYBRAIN_BROWSER_ACCESS_TOKEN" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_BROWSER_ACCESS_TOKEN --config cloudflare-staging/wrangler.jsonc
+          printf '%s' "$BROWSER_AUTOMATION_TOKEN" | npx --yes wrangler@4.165.0 secret put BROWSER_AUTOMATION_TOKEN --config cloudflare-staging/wrangler.jsonc
+          printf '%s' "$BROWSER_AUTOMATION_MCP_URL" | npx --yes wrangler@4.165.0 secret put BROWSER_AUTOMATION_MCP_URL --config cloudflare-staging/wrangler.jsonc
+
+      - name: Deploy Staging gateway
+        run: npx --yes wrangler@4.165.0 deploy --config cloudflare-staging/wrangler.jsonc
+
+      - name: Deployment boundary reminder
+        if: success()
+        run: echo "Staging deployment commands completed. Run the documented /health, tools/list, and example.com open/snapshot/close smoke test before declaring the integration operational."
