@@ -40,6 +40,29 @@ function errorResponse(id, code, message) {
   });
 }
 
+async function readBoundedText(response, maxBytes) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel("Response exceeded configured size limit").catch(() => {});
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 async function constantTimeMatch(supplied, expected) {
   if (typeof supplied !== "string" || !supplied || typeof expected !== "string" || !expected) return false;
   const encoder = new TextEncoder();
@@ -79,8 +102,8 @@ export async function proxyBrowserTool(request, rpc, env, fetchImpl = fetch) {
       signal: AbortSignal.timeout(45000)
     });
     if (!upstream.ok) return errorResponse(rpc.id, -32002, "Browser Run backend returned HTTP " + upstream.status);
-    const body = await upstream.text();
-    if (body.length > 6_000_000) return errorResponse(rpc.id, -32002, "Browser Run backend response exceeded the safe response limit");
+    const body = await readBoundedText(upstream, 6_000_000);
+    if (body === null) return errorResponse(rpc.id, -32002, "Browser Run backend response exceeded the safe response limit");
     let payload;
     try { payload = JSON.parse(body); } catch { return errorResponse(rpc.id, -32004, "Browser Run backend returned invalid JSON"); }
     if (!payload || payload.jsonrpc !== "2.0" || payload.id !== rpc.id) {
