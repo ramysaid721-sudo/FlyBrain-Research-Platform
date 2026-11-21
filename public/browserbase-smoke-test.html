@@ -1,19 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://iudimypauqbkyvjuprgp.supabase.co; form-action 'none'; base-uri 'none'; img-src data:">
-  <title>FlyBrain Browser Gateway — Safe Smoke Test</title>
+  <title>FlyBrain — اختبار آمن لبوابة المتصفح</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101722; color: #edf2f7; }
-    body { max-width: 760px; margin: 32px auto; padding: 0 18px; }
+    body { max-width: 760px; margin: 32px auto; padding: 0 18px; direction: rtl; }
     main { background: #182333; border: 1px solid #34445a; border-radius: 14px; padding: 24px; }
     h1 { font-size: 1.35rem; margin-top: 0; }
     p { line-height: 1.55; color: #c4d0df; }
     label { display: block; margin: 18px 0 8px; font-weight: 650; }
-    input { box-sizing: border-box; width: 100%; padding: 13px; border-radius: 8px; border: 1px solid #60758f; background: #0e1723; color: white; font-size: 1rem; }
+    input { box-sizing: border-box; width: 100%; direction: ltr; text-align: left; padding: 13px; border-radius: 8px; border: 1px solid #60758f; background: #0e1723; color: white; font-size: 1rem; }
     button { margin-top: 16px; padding: 12px 18px; border: 0; border-radius: 8px; background: #76a9fa; color: #102033; font-weight: 700; font-size: 1rem; }
     button:disabled { opacity: .55; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0d1520; border-radius: 8px; padding: 14px; min-height: 90px; color: #d6e2f0; }
@@ -23,14 +23,14 @@
 </head>
 <body>
 <main>
-  <h1>FlyBrain Browser Gateway — Safe Smoke Test</h1>
-  <p>This page checks authentication, MCP tool discovery, one read-only visit to <strong>https://example.com</strong>, a page snapshot, and session closure. It does not click, type, submit forms, or visit any other domain.</p>
-  <label for="token">FLYBRAIN_BROWSER_ACCESS_TOKEN</label>
-  <input id="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Enter the gateway access token">
-  <p class="note">Enter only the custom gateway access token. Do not enter BROWSERBASE_API_KEY or FLYBRAIN_SESSION_SIGNING_KEY. The token is sent only to the Supabase gateway shown in this page's source. It is not saved in browser storage and is cleared from the form after the test. Never send it in ChatGPT chat.</p>
-  <button id="run" type="button">Run safe test</button>
-  <p id="status" role="status">Ready. No request has been sent.</p>
-  <pre id="output">Results will appear here.</pre>
+  <h1>FlyBrain — اختبار آمن لبوابة المتصفح</h1>
+  <p>تتحقق هذه الصفحة من المصادقة، واكتشاف أدوات MCP، وفتح صفحة <strong>https://example.com</strong> للقراءة فقط، واستخراج لقطة من محتواها، ثم إغلاق جلسة المتصفح. لن تنفّذ أي نقر أو كتابة أو إرسال نماذج، ولن تزور أي نطاق آخر.</p>
+  <label for="token">رمز الوصول الخاص ببوابة المتصفح: <span dir="ltr">FLYBRAIN_BROWSER_ACCESS_TOKEN</span></label>
+  <input id="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="أدخل رمز الوصول الخاص بالبوابة">
+  <p class="note">أدخل رمز الوصول المخصص للبوابة فقط. لا تدخل <span dir="ltr">BROWSERBASE_API_KEY</span> ولا <span dir="ltr">FLYBRAIN_SESSION_SIGNING_KEY</span>. يُرسل الرمز حصراً إلى بوابة Supabase المحددة في مصدر هذه الصفحة. لا يُحفظ في تخزين المتصفح، ويُمسح من الحقل بعد الاختبار. لا ترسله في محادثة ChatGPT.</p>
+  <button id="run" type="button">ابدأ الاختبار الآمن</button>
+  <p id="status" role="status">جاهز. لم يُرسل أي طلب بعد.</p>
+  <pre id="output">ستظهر نتائج الاختبار هنا.</pre>
 </main>
 <script>
 (() => {
@@ -71,68 +71,68 @@
   runButton.addEventListener("click", async () => {
     let bearer = tokenInput.value.trim();
     tokenInput.value = "";
-    if (!bearer) { setStatus("Enter the gateway access token first.", false); return; }
+    if (!bearer) { setStatus("أدخل رمز الوصول أولاً.", false); return; }
     runButton.disabled = true;
-    output.textContent = "";
+    output.textContent = "بدء الاختبار…";
     let sessionId = null;
     let passed = false;
     try {
-      setStatus("1/4 — Checking MCP authentication and initialization…");
+      setStatus("1/4 — التحقق من المصادقة وتهيئة MCP…");
       const init = await request("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "flybrain-safe-smoke-test", version: "1.0" } }, bearer);
       if (!init?.serverInfo?.name) throw new Error("MCP initialization did not return server information.");
-      write("PASS: MCP initialized (" + init.serverInfo.name + ").");
+      write("نجاح: تمت تهيئة MCP (" + init.serverInfo.name + ").");
 
-      setStatus("2/4 — Checking browser tool discovery…");
+      setStatus("2/4 — التحقق من ظهور أدوات المتصفح…");
       const listed = await request("tools/list", {}, bearer);
       const names = (listed?.tools || []).map(tool => tool.name);
       const required = ["browser_session_open", "browser_session_snapshot", "browser_session_close"];
       const missing = required.filter(name => !names.includes(name));
       if (missing.length) throw new Error("Required tools are missing: " + missing.join(", "));
-      write("PASS: discovered " + names.length + " tools.");
+      write("نجاح: تم اكتشاف " + names.length + " أدوات.");
 
-      setStatus("3/4 — Opening example.com and reading a snapshot…");
+      setStatus("3/4 — فتح example.com وقراءة محتوى الصفحة…");
       const opened = parseToolText(await request("tools/call", {
         name: "browser_session_open",
         arguments: { url: "https://example.com", allowedDomains: ["example.com"] }
       }, bearer));
       sessionId = opened.sessionId;
       if (opened.status !== "opened" || !sessionId) throw new Error("Browser session did not open successfully.");
-      write("PASS: Chromium session opened. Page title: " + (opened.title || "(empty)") + ".");
+      write("نجاح: فُتحت جلسة Chromium. عنوان الصفحة: " + (opened.title || "(فارغ)") + ".");
 
       const snapshot = parseToolText(await request("tools/call", {
         name: "browser_session_snapshot",
         arguments: { sessionId }
       }, bearer));
       if (!String(snapshot.url || "").startsWith("https://example.com")) throw new Error("Snapshot URL did not match the allowed test domain.");
-      write("PASS: snapshot received for " + snapshot.url + ".");
-      write("Visible text sample: " + String(snapshot.text || "").slice(0, 500).replace(/\s+/g, " "));
+      write("نجاح: تم استلام لقطة الصفحة من " + snapshot.url + ".");
+      write("مقتطف من النص الظاهر: " + String(snapshot.text || "").slice(0, 500).replace(/\s+/g, " "));
 
-      setStatus("4/4 — Closing the browser session…");
+      setStatus("4/4 — إغلاق جلسة المتصفح…");
       const closed = parseToolText(await request("tools/call", {
         name: "browser_session_close",
         arguments: { sessionId }
       }, bearer));
       sessionId = null;
       if (closed.status !== "closed") throw new Error("Browser session closure was not confirmed.");
-      write("PASS: session closed and Browserbase usage released.");
+      write("نجاح: أُغلقت الجلسة وأُطلقت موارد Browserbase.");
       passed = true;
-      setStatus("All smoke-test checks passed.", true);
+      setStatus("نجحت جميع اختبارات التحقق.", true);
     } catch (error) {
-      write("FAIL: " + (error instanceof Error ? error.message : "Unknown error"));
-      setStatus("Smoke test did not complete. See the diagnostic below.", false);
+      write("فشل: " + (error instanceof Error ? error.message : "خطأ غير معروف"));
+      setStatus("لم يكتمل الاختبار. راجع سبب الفشل أدناه.", false);
     } finally {
       if (sessionId) {
         try {
           const closed = parseToolText(await request("tools/call", { name: "browser_session_close", arguments: { sessionId } }, bearer));
-          write(closed.status === "closed" ? "Cleanup: session closed." : "Cleanup response: " + JSON.stringify(closed));
+          write(closed.status === "closed" ? "تنظيف: أُغلقت الجلسة." : "استجابة التنظيف: " + JSON.stringify(closed));
         } catch (error) {
-          write("Cleanup warning: close could not be confirmed. Check Browserbase sessions and release it if still active.");
+          write("تنبيه تنظيف: تعذّر تأكيد إغلاق الجلسة. افحص جلسات Browserbase وأغلقها يدوياً إن بقيت نشطة.");
         }
       }
       bearer = "";
       tokenInput.value = "";
       runButton.disabled = false;
-      if (!passed && status.className !== "bad") setStatus("Test incomplete.", false);
+      if (!passed && status.className !== "bad") setStatus("الاختبار غير مكتمل.", false);
     }
   });
 })();
