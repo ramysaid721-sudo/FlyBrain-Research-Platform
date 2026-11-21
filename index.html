@@ -80,8 +80,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { 
 const $ = (id) => document.getElementById(id);
 const fmt = (v) => v === null || v === undefined ? '—' : Number(v).toLocaleString();
 const sec = (v) => v === null || v === undefined ? '—' : Number(v).toFixed(2) + ' s';
-function showLogin(message='') { $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); $('loginForm').classList.remove('hidden'); $('recoveryForm').classList.add('hidden'); $('forgotPasswordButton').classList.remove('hidden'); $('loginError').textContent=message; }
-function showRecovery() { $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); $('loginForm').classList.add('hidden'); $('forgotPasswordButton').classList.add('hidden'); $('resetMessage').textContent=''; $('recoveryForm').classList.remove('hidden'); $('recoveryError').textContent=''; }
+let recoveryMode = false;
+let recoveryRequestPending = false;
+let recoveryCooldownUntil = 0;
+function showLogin(message='') { recoveryMode=false; $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); $('loginForm').classList.remove('hidden'); $('recoveryForm').classList.add('hidden'); $('forgotPasswordButton').classList.remove('hidden'); $('loginError').textContent=message; }
+function showRecovery() { recoveryMode=true; $('loginView').classList.remove('hidden'); $('appView').classList.add('hidden'); $('loginForm').classList.add('hidden'); $('forgotPasswordButton').classList.add('hidden'); $('resetMessage').textContent=''; $('recoveryForm').classList.remove('hidden'); $('recoveryError').textContent=''; }
 function showApp() { $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden'); }
 function status(ok, text) { $('healthDot').className='dot '+(ok?'ok':'bad'); $('healthText').textContent=text; }
 $('loginForm').addEventListener('submit', async (event) => {
@@ -93,13 +96,18 @@ $('loginForm').addEventListener('submit', async (event) => {
 $('forgotPasswordButton').addEventListener('click', async()=>{
   const email=$('email').value.trim();
   if(!email){$('loginError').textContent='Enter your account email above, then select Forgot password.';$('email').focus();return;}
-  const button=$('forgotPasswordButton');button.disabled=true;$('loginError').textContent='';$('resetMessage').textContent='';
+  const button=$('forgotPasswordButton');
+  if(recoveryRequestPending){$('resetMessage').textContent='A recovery request is already being processed. Do not submit it again.';return;}
+  const wait=Math.ceil((recoveryCooldownUntil-Date.now())/1000);
+  if(wait>0){$('resetMessage').textContent='Please wait '+wait+' seconds before requesting another email. Use only the newest recovery email.';return;}
+  recoveryRequestPending=true;button.disabled=true;$('loginError').textContent='';$('resetMessage').textContent='Requesting a secure recovery email…';
   try {
     const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
     if(error) throw error;
-    $('resetMessage').textContent='If this email belongs to an account, a password recovery link will be sent. Check your inbox and spam folder.';
+    recoveryCooldownUntil=Date.now()+60000;
+    $('resetMessage').textContent='Recovery email requested. Use the newest email once only; opening the same link again will invalidate the one-time token.';
   } catch(e) { $('loginError').textContent=e?.message||'Unable to request password recovery.'; }
-  finally { button.disabled=false; }
+  finally { recoveryRequestPending=false;button.disabled=false; }
 });
 $('recoveryForm').addEventListener('submit',async(event)=>{
   event.preventDefault();
@@ -116,7 +124,17 @@ $('recoveryForm').addEventListener('submit',async(event)=>{
 });
 $('logoutButton').addEventListener('click', async()=>{await supabase.auth.signOut();showLogin();});
 $('refreshButton').addEventListener('click', loadSummary);
-supabase.auth.onAuthStateChange((event, session)=>{ if(event==='PASSWORD_RECOVERY') showRecovery(); else if(!session) showLogin(); });
+supabase.auth.onAuthStateChange((event, session)=>{
+  const hashParams=new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const queryParams=new URLSearchParams(window.location.search);
+  const recoveryRedirect=hashParams.get('type')==='recovery'||queryParams.get('type')==='recovery'||queryParams.has('code');
+  if(event==='PASSWORD_RECOVERY'){showRecovery();return;}
+  if(event==='SIGNED_OUT'){showLogin();return;}
+  // A successful recovery redirect can emit SIGNED_IN before or instead of
+  // PASSWORD_RECOVERY in some client/browser timing paths. Never send that
+  // session to the normal dashboard while the URL indicates recovery.
+  if(event==='SIGNED_IN'&&(recoveryMode||recoveryRedirect)){showRecovery();}
+});
 function renderRows(target, obj) {
   const node=$(target); node.replaceChildren();
   const entries=Object.entries(obj||{}).sort((a,b)=>a[0].localeCompare(b[0]));
