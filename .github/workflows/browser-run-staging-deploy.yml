@@ -50,31 +50,27 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          FLYBRAIN_BROWSER_API_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_API_TOKEN }}
+          FLYBRAIN_SESSION_SIGNING_KEY: ${{ secrets.FLYBRAIN_SESSION_SIGNING_KEY }}
           FLYBRAIN_BROWSER_ACCESS_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_ACCESS_TOKEN }}
-          BROWSER_AUTOMATION_TOKEN: ${{ secrets.BROWSER_AUTOMATION_TOKEN }}
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID FLYBRAIN_BROWSER_API_TOKEN FLYBRAIN_BROWSER_ACCESS_TOKEN BROWSER_AUTOMATION_TOKEN; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID FLYBRAIN_SESSION_SIGNING_KEY FLYBRAIN_BROWSER_ACCESS_TOKEN; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Required GitHub Actions secret is missing: $name"
               exit 1
             fi
           done
-          if [[ ${#FLYBRAIN_BROWSER_API_TOKEN} -lt 32 || ${#FLYBRAIN_BROWSER_ACCESS_TOKEN} -lt 32 ]]; then
-            echo "::error::Browser application tokens must each contain at least 32 characters."
+          if [[ ${#FLYBRAIN_SESSION_SIGNING_KEY} -lt 32 || ${#FLYBRAIN_BROWSER_ACCESS_TOKEN} -lt 32 ]]; then
+            echo "::error::Session signing and client tokens must each contain at least 32 characters."
             exit 1
           fi
-          if [[ "$FLYBRAIN_BROWSER_API_TOKEN" != "$BROWSER_AUTOMATION_TOKEN" ]]; then
-            echo "::error::The Browser Worker API token and gateway backend token must match."
-            exit 1
-          fi
-          if [[ "$FLYBRAIN_BROWSER_API_TOKEN" == "$FLYBRAIN_BROWSER_ACCESS_TOKEN" ]]; then
-            echo "::error::The gateway client token must differ from the Browser Worker/backend token."
+          if [[ "$FLYBRAIN_SESSION_SIGNING_KEY" == "$FLYBRAIN_BROWSER_ACCESS_TOKEN" ]]; then
+            echo "::error::The session signing key and gateway client token must be different."
             exit 1
           fi
           grep -q '"name": "flybrain-browser-staging"' cloudflare-browser-staging/wrangler.jsonc
           grep -q '"name": "flybrain-research-platform-staging"' cloudflare-staging/wrangler.jsonc
+          grep -q '"service": "flybrain-browser-staging"' cloudflare-staging/wrangler.jsonc
           echo "Configuration validation passed. No secret values were printed."
 
       - name: Run Browser Worker tests
@@ -93,43 +89,25 @@ jobs:
       - name: Dry-run Staging gateway bundle
         run: npx --yes wrangler@4.165.0 deploy --dry-run --config cloudflare-staging/wrangler.jsonc --outdir /tmp/flybrain-staging-gateway-build
 
-      - name: Set Browser Worker application secret
+      - name: Set Browser Worker session-signing secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          FLYBRAIN_BROWSER_API_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_API_TOKEN }}
-        run: printf '%s' "$FLYBRAIN_BROWSER_API_TOKEN" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_BROWSER_API_TOKEN --config cloudflare-browser-staging/wrangler.jsonc
+          FLYBRAIN_SESSION_SIGNING_KEY: ${{ secrets.FLYBRAIN_SESSION_SIGNING_KEY }}
+        run: printf '%s' "$FLYBRAIN_SESSION_SIGNING_KEY" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_SESSION_SIGNING_KEY --config cloudflare-browser-staging/wrangler.jsonc
 
       - name: Deploy Browser Worker to Staging
-        id: browser_url
-        shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          deploy_output="$(npx --yes wrangler@4.165.0 deploy --config cloudflare-browser-staging/wrangler.jsonc 2>&1 | tee /tmp/flybrain-browser-worker-deploy.log)"
-          browser_origin="$(printf '%s\n' "$deploy_output" | grep -Eo 'https://[[:alnum:]-]+(\.[[:alnum:]-]+)+\.workers\.dev' | tail -n 1 || true)"
-          if [[ -z "$browser_origin" ]]; then
-            echo "::error::Could not safely discover the deployed Browser Worker workers.dev URL; refusing to configure or deploy the gateway."
-            exit 1
-          fi
-          echo "mcp_url=$browser_origin/mcp" >> "$GITHUB_OUTPUT"
-          echo "Discovered Browser Worker endpoint: $browser_origin/mcp"
+        run: npx --yes wrangler@4.165.0 deploy --config cloudflare-browser-staging/wrangler.jsonc
 
-      - name: Configure Staging gateway secrets
-        shell: bash
+      - name: Set Staging gateway client token
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           FLYBRAIN_BROWSER_ACCESS_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_ACCESS_TOKEN }}
-          BROWSER_AUTOMATION_TOKEN: ${{ secrets.BROWSER_AUTOMATION_TOKEN }}
-          BROWSER_AUTOMATION_MCP_URL: ${{ steps.browser_url.outputs.mcp_url }}
-        run: |
-          set -euo pipefail
-          printf '%s' "$FLYBRAIN_BROWSER_ACCESS_TOKEN" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_BROWSER_ACCESS_TOKEN --config cloudflare-staging/wrangler.jsonc
-          printf '%s' "$BROWSER_AUTOMATION_TOKEN" | npx --yes wrangler@4.165.0 secret put BROWSER_AUTOMATION_TOKEN --config cloudflare-staging/wrangler.jsonc
-          printf '%s' "$BROWSER_AUTOMATION_MCP_URL" | npx --yes wrangler@4.165.0 secret put BROWSER_AUTOMATION_MCP_URL --config cloudflare-staging/wrangler.jsonc
+        run: printf '%s' "$FLYBRAIN_BROWSER_ACCESS_TOKEN" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_BROWSER_ACCESS_TOKEN --config cloudflare-staging/wrangler.jsonc
 
       - name: Deploy Staging gateway
         env:
@@ -139,4 +117,4 @@ jobs:
 
       - name: Deployment boundary reminder
         if: success()
-        run: echo "Staging deployment commands completed. Run the documented /health, tools/list, and example.com open/snapshot/close smoke test before declaring the integration operational."
+        run: echo "Staging deployment commands completed. Verify /health, tools/list, and example.com open/snapshot/close before declaring the integration operational."
