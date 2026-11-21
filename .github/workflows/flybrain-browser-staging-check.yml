@@ -27,6 +27,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Set up Python for provider-router tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test runner
+        run: python -m pip install pytest
+      - name: Test zero-cost provider routing and failover
+        working-directory: .
+        run: python -m pytest -q bridge/test_browser_provider_router.py
       - name: Install pinned Wrangler dependency
         run: npm install --no-audit --no-fund
       - name: Run browser session security tests
