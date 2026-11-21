@@ -40,10 +40,9 @@ jobs:
           FLYBRAIN_BROWSER_API_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_API_TOKEN }}
           FLYBRAIN_BROWSER_ACCESS_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_ACCESS_TOKEN }}
           BROWSER_AUTOMATION_TOKEN: ${{ secrets.BROWSER_AUTOMATION_TOKEN }}
-          BROWSER_AUTOMATION_MCP_URL: ${{ secrets.BROWSER_AUTOMATION_MCP_URL }}
         run: |
           set -euo pipefail
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID FLYBRAIN_BROWSER_API_TOKEN FLYBRAIN_BROWSER_ACCESS_TOKEN BROWSER_AUTOMATION_TOKEN BROWSER_AUTOMATION_MCP_URL; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID FLYBRAIN_BROWSER_API_TOKEN FLYBRAIN_BROWSER_ACCESS_TOKEN BROWSER_AUTOMATION_TOKEN; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Required GitHub Actions secret is missing: $name"
               exit 1
@@ -61,14 +60,6 @@ jobs:
             echo "::error::The gateway client token must differ from the Browser Worker/backend token."
             exit 1
           fi
-          node --input-type=module -e '
-            const u = new URL(process.env.BROWSER_AUTOMATION_MCP_URL);
-            if (u.protocol !== "https:" || !u.hostname.endsWith(".workers.dev") ||
-                u.pathname !== "/mcp" || u.username || u.password || u.search || u.hash) {
-              console.error("BROWSER_AUTOMATION_MCP_URL must be an HTTPS workers.dev /mcp endpoint.");
-              process.exit(1);
-            }
-          '
           grep -q '"name": "flybrain-browser-staging"' cloudflare-browser-staging/wrangler.jsonc
           grep -q '"name": "flybrain-research-platform-staging"' cloudflare-staging/wrangler.jsonc
           echo "Configuration validation passed. No secret values were printed."
@@ -97,10 +88,21 @@ jobs:
         run: printf '%s' "$FLYBRAIN_BROWSER_API_TOKEN" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_BROWSER_API_TOKEN --config cloudflare-browser-staging/wrangler.jsonc
 
       - name: Deploy Browser Worker to Staging
+        id: browser_url
+        shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4.165.0 deploy --config cloudflare-browser-staging/wrangler.jsonc
+        run: |
+          set -euo pipefail
+          deploy_output="$(npx --yes wrangler@4.165.0 deploy --config cloudflare-browser-staging/wrangler.jsonc 2>&1 | tee /tmp/flybrain-browser-worker-deploy.log)"
+          browser_origin="$(printf '%s\\n' "$deploy_output" | grep -Eo 'https://[[:alnum:]-]+(\\.[[:alnum:]-]+)+\\.workers\\.dev' | tail -n 1 || true)"
+          if [[ -z "$browser_origin" ]]; then
+            echo "::error::Could not safely discover the deployed Browser Worker workers.dev URL; refusing to configure or deploy the gateway."
+            exit 1
+          fi
+          echo "mcp_url=$browser_origin/mcp" >> "$GITHUB_OUTPUT"
+          echo "Discovered Browser Worker endpoint: $browser_origin/mcp"
 
       - name: Configure Staging gateway secrets
         shell: bash
@@ -109,7 +111,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           FLYBRAIN_BROWSER_ACCESS_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_ACCESS_TOKEN }}
           BROWSER_AUTOMATION_TOKEN: ${{ secrets.BROWSER_AUTOMATION_TOKEN }}
-          BROWSER_AUTOMATION_MCP_URL: ${{ secrets.BROWSER_AUTOMATION_MCP_URL }}
+          BROWSER_AUTOMATION_MCP_URL: ${{ steps.browser_url.outputs.mcp_url }}
         run: |
           set -euo pipefail
           printf '%s' "$FLYBRAIN_BROWSER_ACCESS_TOKEN" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_BROWSER_ACCESS_TOKEN --config cloudflare-staging/wrangler.jsonc
