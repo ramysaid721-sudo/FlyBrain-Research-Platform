@@ -87,7 +87,7 @@ async function handleMcp(request, env) {
   }
   if (rpc.method === "ping") return json({ jsonrpc: "2.0", id: rpc.id, result: {} });
   if (rpc.method === "tools/list") {
-    const tools = [[{
+    const tools = [{
     name: "ask_flybrain",
     title: "Ask FlyBrain research system",
     description: "Public read-only retrieval of source-labelled FlyBrain-NOS and URCAL project evidence. ChatGPT synthesizes returned excerpts. This tool cannot write, edit, or delete project data.",
