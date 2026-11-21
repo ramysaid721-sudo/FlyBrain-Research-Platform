@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { callTool, readSessionToken, signSessionToken, validateUrl } from "./index.js";
 
-const env = { FLYBRAIN_BROWSER_API_TOKEN: "test-session-signing-key-".padEnd(40, "x") };
+const env = { FLYBRAIN_SESSION_SIGNING_KEY: "test-session-signing-key-".padEnd(40, "x") };
 
 test("session token carries the original allowlist and verifies its signature", async () => {
   const token = await signSessionToken(env, "browser-session-123", ["example.com"]);
