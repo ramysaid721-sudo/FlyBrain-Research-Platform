@@ -82,7 +82,7 @@ async function handleMcp(request, env) {
       protocolVersion: supported.includes(requested) ? requested : "2025-03-26",
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "flybrain-research-bridge", version: "0.16.1-staging" },
-      instructions: "Use ask_flybrain to retrieve source-labelled FlyBrain-NOS and URCAL project context. Distinguish documented evidence from interpretation and hypotheses. This server is public and read-only."
+      instructions: "Use ask_flybrain for public read-only FlyBrain-NOS and URCAL retrieval. Optional browser_session tools are authenticated and hostname-guarded; click, type, and keypress require allowSideEffects=true. Distinguish documented evidence from interpretation and hypotheses."
     }});
   }
   if (rpc.method === "ping") return json({ jsonrpc: "2.0", id: rpc.id, result: {} });
@@ -127,7 +127,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: JSON_HEADERS });
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ status: "ok", service: "flybrain-cloudflare-worker", version: "0.16.1-staging", mode: "read-only", rate_limiter_binding: Boolean(env?.FLYBRAIN_PUBLIC_LIMITER) });
+      return json({ status: "ok", service: "flybrain-cloudflare-worker", version: "0.16.1-staging", mode: "read-only-plus-guarded-browser", rate_limiter_binding: Boolean(env?.FLYBRAIN_PUBLIC_LIMITER) });
     }
     if (url.pathname !== "/mcp") return json({ error: "not_found" }, 404);
     if (request.method !== "POST") return new Response(null, { status: 405, headers: { ...JSON_HEADERS, allow: "POST, OPTIONS" } });
