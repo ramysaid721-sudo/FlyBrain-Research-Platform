@@ -24,9 +24,17 @@ function json(data:unknown,status=200){return new Response(JSON.stringify(data),
 function rpc(id:unknown,result:unknown){return json({jsonrpc:"2.0",id,result});}
 function rpcError(id:unknown,code:number,message:string){return json({jsonrpc:"2.0",id,error:{code,message}});}
 function textResult(value:unknown,extra:unknown[]=[]){return {content:[{type:"text",text:typeof value==="string"?value:JSON.stringify(value)},...extra],isError:false};}
+function normalizeAccessToken(value:string){
+  let token=value.trim();
+  // Accept raw tokens and copied "Bearer <token>" values.
+  token=token.replace(/^(?:Bearer\\s+)+/i,"").trim();
+  // Tolerate one accidental pair of surrounding quotes in copied secret values.
+  if(token.length>=2&&((token.startsWith('"')&&token.endsWith('"'))||(token.startsWith("'")&&token.endsWith("'"))))token=token.slice(1,-1).trim();
+  return token;
+}
 function isAuthorized(req:Request){
-  const supplied=(req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");
-  const expected=Deno.env.get("FLYBRAIN_BROWSER_ACCESS_TOKEN")||"";
+  const supplied=normalizeAccessToken(req.headers.get("authorization")||"");
+  const expected=normalizeAccessToken(Deno.env.get("FLYBRAIN_BROWSER_ACCESS_TOKEN")||"");
   if(!supplied||!expected)return false;
   const a=new TextEncoder().encode(supplied),b=new TextEncoder().encode(expected);
   if(a.length!==b.length)return false;
