@@ -1,6 +1,7 @@
 name: FlyBrain Browser Run Staging — Tests and Dry Runs
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
