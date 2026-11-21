@@ -9,7 +9,7 @@ This is the isolated Staging MCP gateway. It does not replace or modify the Prod
 ## Optional guarded browser capability
 The gateway exposes authenticated `browser_session_*` tools only when a separate Cloudflare Browser Run Worker is configured.
 
-Deploy `cloudflare-browser-staging` as a distinct Worker first, then configure these variables/secrets on this Staging gateway:
+Deploy `cloudflare-browser-staging` as a distinct Worker first, then configure these variables/secrets on this Staging gateway. The manual GitHub Actions deployment workflow now discovers the Browser Worker's `workers.dev` URL from Wrangler's deploy output and sets `BROWSER_AUTOMATION_MCP_URL` on the Staging gateway automatically; do not create a GitHub secret for that URL when using the workflow:
 
 - `FLYBRAIN_BROWSER_ACCESS_TOKEN`: high-entropy client token used by the MCP caller; at least 32 characters.
 - `BROWSER_AUTOMATION_MCP_URL`: exact HTTPS `workers.dev` MCP endpoint ending in `/mcp`.
