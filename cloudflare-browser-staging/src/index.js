@@ -209,6 +209,7 @@ async function callTool(name, args, env) {
   switch (name) {
     case "browser_playwright_fetch": {
       const parsed = new URL(args.url);
+      if (parsed.protocol !== "https:") throw new Error("Only public HTTPS URLs are allowed");
       const host = parsed.hostname.toLowerCase();
       const url = validateUrl(args.url, [host]);
       const browser = await launch(env.BROWSER);
