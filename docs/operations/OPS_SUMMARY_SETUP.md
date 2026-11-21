@@ -21,7 +21,11 @@ Set these in Supabase Dashboard → Project Settings / Edge Functions → Secret
 
 Do not use email addresses as allowlist entries. Do not put UUIDs in Git. Do not enable public signup as a shortcut. Obtain the owner UUID from Supabase Dashboard → Authentication → Users, and verify that it is the account intended to administer this project.
 
+**Current audit finding:** the Staging [0mAuth user table currently contains **zero users**. There is therefore no existing owner UUID to allowlist. An authorized project owner must first add the intended administrator through Authentication → Users → Add user (or the project's approved private sign-in process). Do not send the account password or a session token through chat. After the account exists, copy its UUID directly into the Staging secret value.
+
 The current connector does not expose a safe Edge Function secret-management action. Therefore these two values cannot be set by this repository change; they must be entered in the Supabase Dashboard by an authorized project owner. Do not send the UUID or any secret through chat.
+
+The existing Vercel domain `flybrain-research-mcp.vercel.app` currently serves the MCP gateway, not a dashboard. Its project-level password and SSO protection are disabled. It is **not** being assumed as the dashboard origin. Leave `FLYBRAIN_OPS_ALLOWED_ORIGIN` unset until a dedicated dashboard origin is selected and protected.
 
 ## Deployment sequence (not yet performed)
 
