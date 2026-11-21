@@ -33,12 +33,11 @@ The current Staging RPCs that read operational/private tables are restricted to 
 
 A public unauthenticated summary endpoint would expose internal operational metadata. A client-side secret embedded in JavaScript would not be a secret. Therefore, do not add a dashboard route to the public MCP gateway or query Supabase directly from browser code.
 
-Before a separate dashboard API can be implemented, one of these server-enforced identity models must be selected and verified:
+**Selected design: Supabase Auth owner allowlist.** The user approved this model. A Staging Edge Function source and a service-role-only aggregate RPC migration have now been prepared on this branch. The Edge Function validates a Supabase Auth user JWT through `@supabase/server`, then checks the verified user UUID against the server-side `FLYBRAIN_OPS_OWNER_IDS` allowlist. It calls the aggregate RPC only after that check. The RPC's EXECUTE privilege is revoked from `PUBLIC`, `anon`, and `authenticated`, and granted only to `service_role`.
 
-1. **Supabase Auth allowlist:** verify a signed Supabase user JWT at the Edge Function, then authorize only an explicit owner UUID allowlist held server-side. The browser receives only the user's own session token; service-role access remains server-side.
-2. **Hosting access control:** protect the dashboard and its API with a verified Vercel access-control mechanism (for example, SSO/password protection) before serving any operational data.
+Two deployment values remain intentionally unguessed: the owner's exact Supabase Auth UUID and the eventual dashboard's exact HTTPS origin. They must be configured as Staging Edge Function secrets (`FLYBRAIN_OPS_OWNER_IDS` and `FLYBRAIN_OPS_ALLOWED_ORIGIN`). The connector does not provide a safe Edge Function secret-management action, so an authorized project owner must enter them in the Supabase Dashboard. See [OPS_SUMMARY_SETUP.md](OPS_SUMMARY_SETUP.md).
 
-Do not assume that merely enabling `verify_jwt` authorizes only the project owner: it validates a project JWT, not an owner allowlist. Do not enable broad signups or grant table-level access as a shortcut.
+Do not assume that merely enabling `verify_jwt` authorizes only the project owner: it validates a project JWT, not an owner allowlist. Do not enable broad signups or grant table-level access as a shortcut. No migration has been persistently applied and the function has not been deployed.
 
 ## 4. Proposed read-only API contract (not deployed)
 
@@ -98,6 +97,14 @@ Its potential differentiators are architectural:
 
 What is live today is narrower than the full vision: Staging Crossref task execution is verified; OpenRouter inference is disabled; the Vercel public MCP gateway performs source retrieval/public HTTP research; the proposed deterministic multi-agent workflow remains mock-only. No verified benchmark currently establishes better answer quality, reasoning, speed, or scientific accuracy than ChatGPT, Claude, or Gemini. Those comparisons require a controlled evaluation set and reproducible metrics.
 
-## 8. Change log
+## 8. Implementation state and change log
 
-This document records the architecture audit and a safe implementation path only. It does not change the running system, create a new Edge Function, modify database grants or policies, deploy Vercel/Cloudflare resources, merge branches, or touch Production.
+- [x] Supabase Auth user-JWT validation and owner UUID allowlist source prepared.
+- [x] Aggregate-only SQL RPC source prepared; EXECUTE restricted to `service_role`.
+- [x] SQL migration and privilege assertions tested in a live Staging transaction and rolled back; verified the function did not persist.
+- [x] Owner allowlist and exact HTTPS origin helper tests passed (3 logical groups).
+- [ ] Obtain the owner's Supabase Auth UUID and final dashboard origin; configure them as Staging secrets.
+- [ ] Apply the migration and deploy the function to Staging after configuration is available.
+- [ ] Verify unauthenticated = 401, authenticated non-owner = 403, allowlisted owner = 200.
+
+This branch contains source and documentation only. No persistent database schema or privilege changes, no Edge Function deployment, no Vercel/Cloudflare deployment, no merge, and no Production change has occurred.
