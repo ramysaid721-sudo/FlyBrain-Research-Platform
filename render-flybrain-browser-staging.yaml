@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: flybrain-browserbase-staging
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: staging/browser-run-gateway-integration-2026-11-21
+    rootDir: browserbase-gateway
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeployTrigger: commit
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.16.0
+      - key: BROWSERBASE_API_KEY
+        sync: false
+      - key: BROWSERBASE_PROJECT_ID
+        sync: false
+      - key: MCP_ACCESS_TOKEN
+        generateValue: true
