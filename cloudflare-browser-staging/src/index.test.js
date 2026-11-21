@@ -22,6 +22,10 @@ test("expired session tokens are rejected", async () => {
   await assert.rejects(() => readSessionToken(env, token), /expired or invalid/);
 });
 
+test("interactive URL validation rejects HTTP even when the hostname is allowlisted", () => {
+  assert.throws(() => validateUrl("http://example.com/", ["example.com"]), /Only HTTPS/);
+});
+
 test("URL validation enforces exact and wildcard hostname allowlists", () => {
   assert.equal(validateUrl("https://example.com/path", ["example.com"]), "https://example.com/path");
   assert.equal(validateUrl("https://docs.example.com", ["*.example.com"]), "https://docs.example.com/");
