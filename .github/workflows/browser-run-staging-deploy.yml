@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   deploy-staging:
+    if: github.ref == 'refs/heads/staging/browser-run-gateway-integration-2026-11-21'
     name: Validate, test, and deploy Staging Workers
     runs-on: ubuntu-24.04
     timeout-minutes: 25
