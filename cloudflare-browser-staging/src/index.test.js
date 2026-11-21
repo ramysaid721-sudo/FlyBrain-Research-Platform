@@ -79,7 +79,7 @@ test("Playwright fetch rejects non-HTTPS URLs before launching a browser", async
   const mockEnv = { BROWSER: { async launch() { browserTouched = true; } } };
   await assert.rejects(
     () => callTool("browser_playwright_fetch", { url: "http://example.com/" }, mockEnv),
-    /Only HTTP and HTTPS/
+    /Only public HTTPS/
   );
   assert.equal(browserTouched, false);
 });
