@@ -11,5 +11,11 @@
       "namespace_id": "26111702",
       "simple": { "limit": 30, "period": 60 }
     }
+  ],
+  "services": [
+    {
+      "binding": "FLYBRAIN_BROWSER_WORKER",
+      "service": "flybrain-browser-staging"
+    }
   ]
 }
