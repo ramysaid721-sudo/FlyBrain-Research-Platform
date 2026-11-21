@@ -20,18 +20,10 @@ export const BROWSER_TOOLS = [
 
 export function browserProxyConfigured(env = {}) {
   const client = env.FLYBRAIN_BROWSER_ACCESS_TOKEN;
-  const backend = env.BROWSER_AUTOMATION_TOKEN;
-  const endpoint = env.BROWSER_AUTOMATION_MCP_URL;
-  if (typeof client !== "string" || client.length < 32) return false;
-  if (typeof backend !== "string" || backend.length < 32 || backend === client) return false;
-  if (typeof endpoint !== "string") return false;
-  try {
-    const url = new URL(endpoint);
-    return url.protocol === "https:" && url.hostname.endsWith(".workers.dev") &&
-      url.pathname === "/mcp" && !url.username && !url.password && !url.search && !url.hash;
-  } catch {
-    return false;
-  }
+  const service = env.FLYBRAIN_BROWSER_WORKER;
+  return typeof client === "string" && client.length >= 32 &&
+    service !== null && typeof service === "object" &&
+    typeof service.fetch === "function";
 }
 
 function errorResponse(id, code, message) {
@@ -77,30 +69,26 @@ async function constantTimeMatch(supplied, expected) {
   return mismatch === 0;
 }
 
-export async function proxyBrowserTool(request, rpc, env, fetchImpl = fetch) {
+export async function proxyBrowserTool(request, rpc, env) {
   const name = rpc?.params?.name;
   if (!BROWSER_TOOLS.some((tool) => tool.name === name)) {
     return errorResponse(rpc?.id, -32602, "Unknown browser session tool");
   }
   if (!browserProxyConfigured(env)) {
-    return errorResponse(rpc?.id, -32000, "Browser Run backend is not configured");
+    return errorResponse(rpc?.id, -32000, "Browser Run service binding or client token is not configured");
   }
-  const supplied = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  const supplied = (request.headers.get("authorization") || "").replace(/^Bearer\\s+/i, "");
   if (!await constantTimeMatch(supplied, env.FLYBRAIN_BROWSER_ACCESS_TOKEN)) {
     return errorResponse(rpc?.id, -32001, "Browser automation access is unauthorized");
   }
-  const endpoint = new URL(env.BROWSER_AUTOMATION_MCP_URL);
   try {
-    const upstream = await fetchImpl(endpoint.toString(), {
+    const internalRequest = new Request("https://flybrain-browser-staging.internal/mcp", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "authorization": "Bearer " + env.BROWSER_AUTOMATION_TOKEN
-      },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(rpc),
-      redirect: "manual",
       signal: AbortSignal.timeout(45000)
     });
+    const upstream = await env.FLYBRAIN_BROWSER_WORKER.fetch(internalRequest);
     if (!upstream.ok) return errorResponse(rpc.id, -32002, "Browser Run backend returned HTTP " + upstream.status);
     const body = await readBoundedText(upstream, 6_000_000);
     if (body === null) return errorResponse(rpc.id, -32002, "Browser Run backend response exceeded the safe response limit");
@@ -111,6 +99,6 @@ export async function proxyBrowserTool(request, rpc, env, fetchImpl = fetch) {
     }
     return new Response(JSON.stringify(payload), { status: 200, headers: JSON_HEADERS });
   } catch {
-    return errorResponse(rpc.id, -32003, "Browser Run backend is unreachable or timed out");
+    return errorResponse(rpc.id, -32003, "Browser Run service binding is unreachable or timed out");
   }
 }
