@@ -1,64 +1,75 @@
 # FlyBrain Browser Worker — Staging
 
-An isolated, authenticated MCP browser service using Cloudflare Browser Run. It is separate from both the existing read-only retrieval bridge and the production Worker.
+An isolated, authenticated MCP browser service using Cloudflare Browser Run and the Cloudflare-compatible Playwright runtime. It is separate from the existing retrieval bridge and production Worker.
 
 ## Capabilities
 
-- Start guarded remote Chromium sessions with an explicit hostname allowlist.
+- Render public HTTPS pages with Playwright on Cloudflare Browser Run.
+- Restrict every page request, including redirects and subresources, to the exact target hostname.
+- Start guarded remote Chromium sessions with explicit hostname allowlists.
 - Navigate, inspect visible page text, click CSS selectors, enter text, press supported keys, capture screenshots, and close sessions.
-- Reconnect to an existing Browser Run session by session ID on each MCP request.
-- Use Cloudflare's Browser binding; no Cloudflare API token is needed at runtime for Browser Run calls.
+- Keep browser sessions short and close them after use.
+
+## Provider routing in FlyBrain
+
+The Python adapter uses a zero-cost-first policy:
+
+1. Plain HTTPS extraction is attempted first.
+2. If the page appears to require JavaScript or HTTP extraction fails, FlyBrain tries the configured Cloudflare Browser Run + Playwright endpoint.
+3. If Cloudflare is unavailable or fails, FlyBrain tries Browserless only when its token and explicit usage flag are configured.
+4. If rendered providers are unavailable, the original HTTP result is returned with a warning that JavaScript content may be incomplete.
+
+Playwright is an automation engine, not a hosted browser provider. In this setup it runs on Cloudflare Browser Run. Browserless is a separate hosted fallback.
 
 ## Security model
 
 - All MCP requests require `Authorization: Bearer <FLYBRAIN_BROWSER_API_TOKEN>`.
 - The token is a Cloudflare Worker secret and must never be committed to Git.
-- Each new browser session requires 1–50 explicit hostname patterns. Cloudflare Browser Run guardrails enforce this allowlist for HTTP(S) requests throughout the session.
-- The session allowlist cannot be expanded after acquisition.
-- Request body is limited to 64 KiB; extracted text and HTML are bounded.
-- Browser sessions use a 60-second inactivity keep-alive. Always call `browser_session_close` when finished.
-- The endpoint is not public-anonymous. Do not expose the token in URLs, client logs, screenshots, or page content.
+- The Playwright fetch tool accepts only public HTTPS targets and intercepts browser requests, allowing only the exact target hostname.
+- Interactive sessions require 1–50 explicit hostname patterns enforced by Browser Run guardrails.
+- Request body and extracted content are bounded.
+- No credentials are sent to target pages. The system does not bypass CAPTCHAs, logins, paywalls, access controls, or website security.
 
-## Free-tier budget protection
+## Cost controls
 
-Cloudflare documents a Workers Free Browser Run allowance of 10 browser minutes per day and up to 3 concurrent browser sessions. This Worker uses short inactivity keep-alive and explicit close operations. Usage is not unlimited; monitor Browser Run usage in the Cloudflare dashboard. No paid upgrade is required by this source code.
+- Cloudflare documents 10 browser minutes/day and up to 3 concurrent Browser Run sessions on Workers Free. Usage is finite; verify the account plan before enabling the adapter.
+- Browserless Free currently lists 1,000 units/month, 2 concurrent browsers, and 2-minute sessions; the free allowance rejects new requests after it is exhausted.
+- Both remote providers remain disabled unless their credentials and explicit usage flags are configured.
+- FlyBrain defaults to the HTTP path and does not automatically enable paid plans or billing.
 
-## Configure
+## Configure staging only
 
-1. In Cloudflare Workers & Pages, create a new Worker named `flybrain-browser-staging` using the Git repository.
-2. Set the Root directory to `cloudflare-browser-staging`.
-3. Use `npm run deploy` as the build/deploy command (or use the Git-integrated Workers Builds flow).
-4. Ensure the Worker has the Browser Run binding named `BROWSER`. The committed `wrangler.jsonc` declares it.
-5. Add a random, high-entropy secret named `FLYBRAIN_BROWSER_API_TOKEN` under Worker Settings → Variables and Secrets. Do not use the Cloudflare API token as this application token.
-6. Deploy the staging Worker only. Do not connect this project to the production Worker name.
+Cloudflare Worker:
+1. Set the Worker name to `flybrain-browser-staging`.
+2. Set the root directory to `cloudflare-browser-staging`.
+3. Ensure the Browser binding is named `BROWSER`.
+4. Add `FLYBRAIN_BROWSER_API_TOKEN` as a Worker secret.
+5. Deploy this staging Worker only and verify `/health`.
 
-If using Wrangler manually, set the secret with `npx wrangler secret put FLYBRAIN_BROWSER_API_TOKEN`, then deploy from this directory with `npx wrangler deploy`.
+FlyBrain Vercel Preview environment (branch `flybrain-browser-worker-staging`):
+- `FLYBRAIN_BROWSER_WORKER_URL`: the full HTTPS Worker MCP URL ending in `/mcp`.
+- `FLYBRAIN_BROWSER_API_TOKEN`: the same application secret configured on the Worker.
+- `FLYBRAIN_BROWSER_RUN_ALLOW_USAGE`: set to `true` only after verifying the account is on a no-charge plan and the free quota is acceptable.
+- `BROWSERLESS_TOKEN`: optional Browserless free-plan token.
+- `BROWSERLESS_ALLOW_USAGE`: set to `true` only if the Browserless free plan is selected and overage is disabled/rejected by the provider.
+- `FLYBRAIN_WEB_FETCH_PROVIDER`: leave unset or set to `auto` for automatic failover.
+
+Do not place these values in GitHub files, commit messages, logs, or issue comments. Use Vercel Preview variables scoped to the staging branch, never Production.
 
 ## MCP endpoint
 
-- Health: `GET /health` (does not reveal the secret)
-- MCP: `POST /mcp` with JSON-RPC 2.0 and `Authorization: Bearer <FLYBRAIN_BROWSER_API_TOKEN>`
-
-## Tools
-
-- `browser_session_open(url, allowedDomains)`
-- `browser_session_navigate(sessionId, url)`
-- `browser_session_snapshot(sessionId, includeHtml?)`
-- `browser_session_click(sessionId, selector)`
-- `browser_session_type(sessionId, selector, text)`
-- `browser_session_press(sessionId, key)`
-- `browser_session_screenshot(sessionId)`
-- `browser_session_close(sessionId)`
+- Health: `GET /health`
+- MCP: `POST /mcp`
+- Playwright rendering tool: `browser_playwright_fetch(url)`
+- Session tools: `browser_session_open`, `browser_session_navigate`, `browser_session_snapshot`, `browser_session_click`, `browser_session_type`, `browser_session_press`, `browser_session_screenshot`, `browser_session_close`
 
 ## Local checks
 
 ```sh
-npm install
+npm install --no-audit --no-fund
 npm run check
+npm test
+npx wrangler deploy --dry-run
 ```
 
-Local syntax checking does not exercise the remote Browser Run binding. A real deployment smoke test is required to validate account binding and Browser Run quota.
-
-## Explicit non-goals
-
-This Worker does not bypass CAPTCHAs, access controls, or website terms. It does not execute arbitrary shell commands, install packages at runtime, or modify the existing production or read-only staging Worker.
+A dry run does not prove that the live Browser Run binding or authentication secret is configured. A live smoke test is required after staging deployment.
