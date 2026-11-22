@@ -1,0 +1,120 @@
+name: FlyBrain Browser Run — Manual Staging Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging_only:
+        description: "Confirm deployment to the two Staging Workers only"
+        required: true
+        type: choice
+        options:
+          - deploy-staging-only
+  push:
+    branches:
+      - staging/browser-run-gateway-integration-2026-11-21
+    paths:
+      - "cloudflare-browser-staging/**"
+      - "cloudflare-staging/worker/**"
+      - "cloudflare-staging/wrangler.jsonc"
+      - ".github/workflows/browser-run-staging-deploy.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flybrain-browser-run-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    if: >-
+      github.ref == 'refs/heads/staging/browser-run-gateway-integration-2026-11-21' &&
+      (
+        (github.event_name == 'push' && contains(github.event.head_commit.message, '[deploy-staging-only]')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.confirm_staging_only == 'deploy-staging-only')
+      )
+    name: Validate, test, and deploy Staging Workers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out selected Staging branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate Staging-only configuration and credentials
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FLYBRAIN_SESSION_SIGNING_KEY: ${{ secrets.FLYBRAIN_SESSION_SIGNING_KEY }}
+          FLYBRAIN_BROWSER_ACCESS_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID FLYBRAIN_SESSION_SIGNING_KEY FLYBRAIN_BROWSER_ACCESS_TOKEN; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required GitHub Actions secret is missing: $name"
+              exit 1
+            fi
+          done
+          if [[ ${#FLYBRAIN_SESSION_SIGNING_KEY} -lt 32 || ${#FLYBRAIN_BROWSER_ACCESS_TOKEN} -lt 32 ]]; then
+            echo "::error::Session signing and client tokens must each contain at least 32 characters."
+            exit 1
+          fi
+          if [[ "$FLYBRAIN_SESSION_SIGNING_KEY" == "$FLYBRAIN_BROWSER_ACCESS_TOKEN" ]]; then
+            echo "::error::The session signing key and gateway client token must be different."
+            exit 1
+          fi
+          grep -q '"name": "flybrain-browser-staging"' cloudflare-browser-staging/wrangler.jsonc
+          grep -q '"name": "flybrain-research-platform-staging"' cloudflare-staging/wrangler.jsonc
+          grep -q '"service": "flybrain-browser-staging"' cloudflare-staging/wrangler.jsonc
+          echo "Configuration validation passed. No secret values were printed."
+
+      - name: Run Browser Worker tests
+        working-directory: cloudflare-browser-staging
+        run: node --test src/index.test.js
+
+      - name: Check Browser Worker syntax
+        run: node --check cloudflare-browser-staging/src/index.js
+
+      - name: Run Staging gateway proxy tests
+        run: node --test cloudflare-staging/worker/browser-proxy.test.js
+
+      - name: Dry-run Browser Worker bundle
+        run: npx --yes wrangler@4.165.0 deploy --dry-run --config cloudflare-browser-staging/wrangler.jsonc --outdir /tmp/flybrain-browser-worker-build
+
+      - name: Dry-run Staging gateway bundle
+        run: npx --yes wrangler@4.165.0 deploy --dry-run --config cloudflare-staging/wrangler.jsonc --outdir /tmp/flybrain-staging-gateway-build
+
+      - name: Set Browser Worker session-signing secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FLYBRAIN_SESSION_SIGNING_KEY: ${{ secrets.FLYBRAIN_SESSION_SIGNING_KEY }}
+        run: printf '%s' "$FLYBRAIN_SESSION_SIGNING_KEY" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_SESSION_SIGNING_KEY --config cloudflare-browser-staging/wrangler.jsonc
+
+      - name: Deploy Browser Worker to Staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.165.0 deploy --config cloudflare-browser-staging/wrangler.jsonc
+
+      - name: Set Staging gateway client token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FLYBRAIN_BROWSER_ACCESS_TOKEN: ${{ secrets.FLYBRAIN_BROWSER_ACCESS_TOKEN }}
+        run: printf '%s' "$FLYBRAIN_BROWSER_ACCESS_TOKEN" | npx --yes wrangler@4.165.0 secret put FLYBRAIN_BROWSER_ACCESS_TOKEN --config cloudflare-staging/wrangler.jsonc
+
+      - name: Deploy Staging gateway
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.165.0 deploy --config cloudflare-staging/wrangler.jsonc
+
+      - name: Deployment boundary reminder
+        if: success()
+        run: echo "Staging deployment commands completed. Verify /health, tools/list, and example.com open/snapshot/close before declaring the integration operational."

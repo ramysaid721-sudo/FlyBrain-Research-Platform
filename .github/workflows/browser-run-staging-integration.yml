@@ -1,0 +1,48 @@
+name: FlyBrain Browser Run Staging — Tests and Dry Runs
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "cloudflare-browser-staging/**"
+      - "cloudflare-staging/worker/**"
+      - "cloudflare-staging/wrangler.jsonc"
+      - ".github/workflows/browser-run-staging-integration.yml"
+  push:
+    branches: ["staging/browser-run-gateway-integration-2026-11-21"]
+    paths:
+      - "cloudflare-browser-staging/**"
+      - "cloudflare-staging/worker/**"
+      - "cloudflare-staging/wrangler.jsonc"
+      - ".github/workflows/browser-run-staging-integration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  browser-and-gateway-validation:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Browser Worker validation dependency
+        working-directory: cloudflare-browser-staging
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Run Browser Worker security tests
+        working-directory: cloudflare-browser-staging
+        run: npm test
+      - name: Check Browser Worker JavaScript syntax
+        working-directory: cloudflare-browser-staging
+        run: npm run check
+      - name: Run Staging gateway proxy tests
+        run: node --test cloudflare-staging/worker/browser-proxy.test.js
+      - name: Dry-run Browser Worker bundle (no deployment)
+        working-directory: cloudflare-browser-staging
+        run: npx wrangler deploy --dry-run --outdir /tmp/flybrain-browser-worker-build
+      - name: Dry-run Staging gateway bundle (no deployment)
+        working-directory: cloudflare-staging
+        run: npx --yes wrangler@4.165.0 deploy --dry-run --config wrangler.jsonc --outdir /tmp/flybrain-staging-gateway-build
