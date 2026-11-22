@@ -46,6 +46,7 @@ function validateUrl(value, patterns) {
   let url;
   try { url = new URL(value); } catch { throw new Error("Invalid URL"); }
   if (url.protocol !== "https:") throw new Error("Only HTTPS URLs are allowed");
+  if (!validHostPattern(url.hostname.toLowerCase())) throw new Error("Only public DNS hostnames are allowed");
   if (url.username || url.password) throw new Error("URLs containing credentials are not allowed");
   if (!hostAllowed(url.hostname.toLowerCase(), patterns)) throw new Error("URL hostname is not covered by the session allowlist");
   return url.toString();

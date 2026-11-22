@@ -92,3 +92,29 @@ test("invalid side-effect approval types are rejected", async () => {
     sessionId, selector: "button", allowSideEffects: "yes"
   }, env), /allowSideEffects must be boolean/);
 });
+
+
+test("browser URL validation rejects localhost, internal suffixes, and private numeric hosts", () => {
+  for (const value of [
+    "https://localhost/",
+    "https://service.internal/",
+    "https://printer.local/",
+    "https://127.0.0.1/",
+    "https://169.254.169.254/"
+  ]) {
+    const host = new URL(value).hostname;
+    assert.throws(() => validateUrl(value, [host]));
+  }
+});
+
+test("private numeric browser-session targets are rejected before Browser Run access", async () => {
+  let browserTouched = false;
+  const env = { BROWSER: { async acquire() { browserTouched = true; throw new Error("Browser Run must not be reached"); } } };
+  await assert.rejects(
+    () => callTool("browser_session_open", {
+      url: "https://127.0.0.1/", allowedDomains: ["127.0.0.1"]
+    }, env),
+    /valid hostname patterns/
+  );
+  assert.equal(browserTouched, false);
+});
