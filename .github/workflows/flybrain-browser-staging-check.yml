@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   validate-browser-worker:
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
