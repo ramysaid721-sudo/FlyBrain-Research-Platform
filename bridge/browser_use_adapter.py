@@ -5,14 +5,15 @@ or external LLM. Interactive browser control remains an optional Browser Use ext
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
 from html.parser import HTMLParser
 from ipaddress import ip_address, ip_address as _ip
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import parse_qs, quote_plus, unquote, urlencode, urljoin, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 class BrowserUseNotConfigured(RuntimeError):
     pass
@@ -229,12 +230,16 @@ def browser_use_status() -> dict:
         "web_search_ready": True, "web_fetch_ready": True,
         "browser_mode": "local Chromium" if provider != "browser-use-cloud" else "Browser Use Cloud",
         "reason": reason, "persistent_profiles": False,
-        "note": "HTTP search and extraction work independently. Interactive browser control is not active until a live Browser Use task succeeds.",
+        "browserless": browserless_status(),
+        "cloudflare_browser_run": cloudflare_browser_status(),
+        "provider_router": browser_provider_status(),
+        "note": "Interactive browser agents require Browser Use and a configured model. Public page extraction separately uses zero-cost HTTP first, with optional Cloudflare Playwright and Browserless rendered fallbacks.",
     }
 
 
 def run_browser_task(url: str, goal: str, max_steps: int = 12, allow_side_effects: bool = False) -> dict:
-    target = _validate_url(url)
+    if not isinstance(url, str) or not url.strip() or len(url) > 2048:
+        raise ValueError("url must be a non-empty string of at most 2048 characters")
     if not isinstance(goal, str) or not goal.strip() or len(goal) > 8000:
         raise ValueError("goal must be a non-empty string of at most 8000 characters")
     if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 1 <= max_steps <= 30:
@@ -243,7 +248,10 @@ def run_browser_task(url: str, goal: str, max_steps: int = 12, allow_side_effect
         raise ValueError("allow_side_effects must be boolean")
     mutation_terms = re.compile(r"\b(send|submit|purchase|buy|pay|delete|remove|publish|post|upload|change password|change settings|invite|book|reserve|transfer|deploy)\b", re.IGNORECASE)
     if mutation_terms.search(goal) and not allow_side_effects:
-        return {"status": "approval_required", "message": "This goal may modify an account or submit information. Explicit approval is required.", "url": target, "steps": 0}
+        return {"status": "approval_required", "message": "This goal may modify an account or submit information. Explicit approval is required.", "url": url.strip(), "steps": 0}
+    # Do not perform DNS lookups or any network work before a potentially mutating
+    # task has passed its explicit-approval gate.
+    target = _validate_url(url)
     status = browser_use_status()
     if not status["installed"]:
         raise BrowserUseNotConfigured("Interactive browser control is unavailable: install Browser Use and Chromium on a compatible persistent browser host")
@@ -303,6 +311,7 @@ def run_browser_search(query: str, max_results: int = 8) -> dict:
     final_url, content_type, html = _http_get(search_url, timeout=12, max_bytes=1_000_000)
     parser = _SearchParser(max_results)
     parser.feed(html)
+    parser.close()
     results = []
     for item in parser.results[:max_results]:
         url = _normalise_search_url(item.get("url", ""))
@@ -322,11 +331,246 @@ def run_browser_search(query: str, max_results: int = 8) -> dict:
             "note": "Results are public-web search results; verify primary sources before relying on claims."}
 
 
-def run_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
+def browserless_status() -> dict:
+    """Report Browserless configuration without exposing credentials."""
+    token_present = bool(os.environ.get("BROWSERLESS_TOKEN"))
+    usage_enabled = os.environ.get("BROWSERLESS_ALLOW_USAGE", "").strip().lower() == "true"
+    endpoint = os.environ.get("BROWSERLESS_CONTENT_ENDPOINT", "https://production-sfo.browserless.io/content")
+    parsed = urlparse(endpoint)
+    endpoint_valid = (
+        parsed.scheme == "https" and bool(parsed.hostname)
+        and not parsed.username and not parsed.password
+        and (parsed.hostname == "browserless.io" or parsed.hostname.endswith(".browserless.io"))
+        and parsed.path.rstrip("/") == "/content"
+    )
+    return {
+        "configured": bool(token_present and usage_enabled and endpoint_valid),
+        "token_present": token_present,
+        "usage_enabled": usage_enabled,
+        "endpoint_valid": endpoint_valid,
+        "provider": "browserless",
+        "note": "Browserless usage may consume plan units. Calls remain disabled unless BROWSERLESS_ALLOW_USAGE=true is explicitly configured.",
+    }
+
+
+def run_browserless_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
+    """Fetch one public host through Browserless with in-browser request interception."""
     if output_format not in {"markdown", "text", "json"}:
         raise ValueError("output_format must be markdown, text, or json")
     if not isinstance(include_links, bool):
         raise ValueError("include_links must be boolean")
+    # Fail closed before DNS resolution or any network-dependent validation.
+    status = browserless_status()
+    if not status["configured"]:
+        raise BrowserUseNotConfigured(
+            "Browserless is not enabled. Configure BROWSERLESS_TOKEN and explicitly set BROWSERLESS_ALLOW_USAGE=true."
+        )
+    target = _validate_url(url)
+    endpoint = os.environ.get(
+        "BROWSERLESS_CONTENT_ENDPOINT", "https://production-sfo.browserless.io/content"
+    ).rstrip("/")
+    parsed_endpoint = urlparse(endpoint)
+    if parsed_endpoint.path.rstrip("/") != "/content":
+        raise BrowserUseNotConfigured("Browserless endpoint path must be /content")
+    endpoint = endpoint.rsplit("/", 1)[0] + "/function"
+    token = os.environ["BROWSERLESS_TOKEN"]
+    hostname = urlparse(target).hostname
+    # Browserless /function runs Puppeteer. Intercept every browser request and allow
+    # only HTTPS requests to the exact validated hostname. No undocumented allowlist
+    # query parameters are relied upon.
+    browser_code = (
+        "export default async ({ page }) => {"
+        "const target = " + json.dumps(target) + ";"
+        "const allowedHost = " + json.dumps(hostname) + ";"
+        "await page.setRequestInterception(true);"
+        "page.on('request', request => {"
+        "try { const parsed = new URL(request.url());"
+        "if (parsed.protocol === 'https:' && parsed.hostname.toLowerCase() === allowedHost) "
+        "return request.continue();"
+        "return request.abort();"
+        "} catch (_) { return request.abort(); }"
+        "});"
+        "let navigationError = null;"
+        "try { await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 12000 }); }"
+        "catch (error) { navigationError = String(error && error.message || error).slice(0, 500); }"
+        "const html = await page.content();"
+        "return { data: { html, finalUrl: page.url(), navigationError }, type: 'application/json' };"
+        "};"
+    )
+    query = urlencode({"token": token})
+    request = Request(
+        endpoint + "?" + query,
+        data=browser_code.encode("utf-8"),
+        headers={"Content-Type": "application/javascript", "Cache-Control": "no-cache"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=25) as response:
+            if not 200 <= response.status < 300:
+                raise BrowserUseNotConfigured("Browserless returned a non-success HTTP status")
+            payload = response.read(2_000_001)
+            if len(payload) > 2_000_000:
+                raise ValueError("Browserless response exceeded the 2 MB extraction limit")
+            response_type = response.headers.get("Content-Type", "")
+    except HTTPError as exc:
+        raise BrowserUseNotConfigured(f"Browserless request failed with HTTP {exc.code}") from None
+    except URLError as exc:
+        raise BrowserUseNotConfigured(f"Browserless connection failed: {type(exc.reason).__name__}") from None
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+        data = decoded.get("data", decoded) if isinstance(decoded, dict) else {}
+        html = data.get("html", "") if isinstance(data, dict) else ""
+        final_url = data.get("finalUrl", target) if isinstance(data, dict) else target
+        navigation_error = data.get("navigationError") if isinstance(data, dict) else None
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        raise BrowserUseNotConfigured("Browserless returned an invalid JSON function response") from None
+    if not isinstance(html, str) or not html:
+        raise BrowserUseNotConfigured("Browserless returned no rendered HTML")
+    # A redirected final URL is accepted only if it remains on the exact target host.
+    final = urlparse(final_url)
+    if final.scheme != "https" or final.hostname != hostname:
+        raise BrowserUseNotConfigured("Browserless navigation left the permitted host")
+    parser = _PageParser()
+    parser.feed(html)
+    content = parser.page_text()
+    links = []
+    if include_links:
+        for item in parser.links[:100]:
+            raw = urljoin(final_url, item.get("href", "").strip())
+            parsed_link = urlparse(raw)
+            if parsed_link.scheme == "https" and parsed_link.hostname == hostname:
+                links.append({"text": " ".join(item.get("text", "").split())[:300], "url": raw})
+    return {
+        "status": "completed",
+        "url": final_url,
+        "title": parser.title.strip()[:500],
+        "description": parser.description,
+        "content_type": response_type or "application/json",
+        "content": content[:30000],
+        "links": links,
+        "extraction_mode": "Browserless rendered Chromium with exact-host request interception",
+        "provider": "browserless",
+        "side_effects": False,
+        "content_is_untrusted": True,
+        "navigation_error": navigation_error,
+    }
+
+
+def cloudflare_browser_status() -> dict:
+    """Report Cloudflare Browser Run readiness without exposing credentials."""
+    endpoint = os.environ.get("FLYBRAIN_BROWSER_WORKER_URL", "").strip()
+    token_present = bool(os.environ.get("FLYBRAIN_BROWSER_API_TOKEN"))
+    usage_enabled = os.environ.get("FLYBRAIN_BROWSER_RUN_ALLOW_USAGE", "").strip().lower() == "true"
+    try:
+        parsed = urlparse(endpoint)
+        endpoint_valid = (
+            parsed.scheme == "https" and bool(parsed.hostname)
+            and not parsed.username and not parsed.password
+            and parsed.path.rstrip("/").endswith("/mcp")
+            and not parsed.query and not parsed.fragment
+        )
+    except Exception:
+        endpoint_valid = False
+    return {
+        "provider": "cloudflare_browser_run",
+        "engine": "playwright",
+        "endpoint_configured": bool(endpoint),
+        "endpoint_valid": endpoint_valid,
+        "token_present": token_present,
+        "usage_enabled": usage_enabled,
+        "configured": bool(endpoint_valid and token_present and usage_enabled),
+        "note": "Cloudflare Browser Run is skipped unless its HTTPS MCP endpoint, secret, and explicit zero-cost usage flag are configured.",
+    }
+
+
+def browser_provider_status() -> dict:
+    """Summarize provider readiness without returning secret values."""
+    return {
+        "strategy": os.environ.get("FLYBRAIN_WEB_FETCH_PROVIDER", "auto").strip().lower(),
+        "cloudflare": cloudflare_browser_status(),
+        "browserless": browserless_status(),
+        "http": {"provider": "http", "configured": True, "ready": True, "cost_usd": 0},
+        "playwright": {
+            "provider": "playwright",
+            "role": "automation_engine",
+            "hosted_by": "cloudflare_browser_run",
+            "ready": cloudflare_browser_status()["configured"],
+        },
+    }
+
+
+def _decode_cloudflare_tool_response(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned an invalid response")
+    result = payload.get("result")
+    if not isinstance(result, dict) or result.get("isError"):
+        contents = result.get("content", []) if isinstance(result, dict) else []
+        message = contents[0].get("text", "Cloudflare Browser Run tool failed") if contents else "Cloudflare Browser Run tool failed"
+        raise BrowserUseNotConfigured(str(message)[:500])
+    contents = result.get("content", [])
+    if not contents or not isinstance(contents[0], dict):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned no page content")
+    try:
+        data = json.loads(contents[0].get("text", "{}"))
+    except (TypeError, json.JSONDecodeError):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned malformed page content") from None
+    if not isinstance(data, dict):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned an unexpected page payload")
+    return data
+
+
+def run_cloudflare_playwright_fetch(url: str) -> dict:
+    """Fetch a public page with Playwright running on the Cloudflare Browser Run Worker."""
+    status = cloudflare_browser_status()
+    if not status["configured"]:
+        raise BrowserUseNotConfigured("Cloudflare Browser Run is not configured or its explicit usage flag is disabled")
+    target = _validate_url(url)
+    endpoint = os.environ["FLYBRAIN_BROWSER_WORKER_URL"].strip()
+    token = os.environ["FLYBRAIN_BROWSER_API_TOKEN"]
+    request_body = {
+        "jsonrpc": "2.0", "id": "flybrain-render-fetch",
+        "method": "tools/call",
+        "params": {"name": "browser_playwright_fetch", "arguments": {"url": target}},
+    }
+    request = Request(
+        endpoint, data=json.dumps(request_body).encode("utf-8"),
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=25) as response:
+            raw = response.read(2_000_001)
+            if len(raw) > 2_000_000:
+                raise ValueError("Cloudflare Browser Run response exceeded the 2 MB limit")
+            payload = json.loads(raw.decode("utf-8"))
+    except HTTPError as exc:
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned HTTP " + str(exc.code)) from None
+    except URLError as exc:
+        raise BrowserUseNotConfigured("Cloudflare Browser Run connection failed: " + type(exc.reason).__name__) from None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned invalid JSON") from None
+    data = _decode_cloudflare_tool_response(payload)
+    final_url = data.get("url", target)
+    if urlparse(final_url).hostname != urlparse(target).hostname or urlparse(final_url).scheme != "https":
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned a page outside the exact permitted hostname")
+    content = data.get("text", "")
+    if not isinstance(content, str):
+        raise BrowserUseNotConfigured("Cloudflare Browser Run returned invalid page text")
+    return {
+        "status": "completed", "provider": "cloudflare_browser_run",
+        "engine": "playwright", "url": final_url,
+        "title": str(data.get("title", ""))[:500],
+        "content": content[:30000], "links": [],
+        "extraction_mode": "Playwright on Cloudflare Browser Run",
+        "side_effects": False, "content_is_untrusted": True,
+    }
+
+
+def _run_http_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
     final_url, content_type, body = _http_get(url, timeout=8, max_bytes=1_500_000)
     parser = _PageParser()
     parser.feed(body)
@@ -341,7 +585,7 @@ def run_browser_fetch(url: str, output_format: str = "markdown", include_links: 
                 except ValueError:
                     continue
                 links.append({"text": " ".join(item.get("text", "").split())[:300], "url": safe})
-    result = {
+    return {
         "status": "completed", "url": final_url,
         "title": parser.title.strip()[:500],
         "description": parser.description,
@@ -349,15 +593,71 @@ def run_browser_fetch(url: str, output_format: str = "markdown", include_links: 
         "content": content[:30000],
         "links": links,
         "extraction_mode": "HTTP HTML extraction (no JavaScript execution)",
+        "provider": "http", "side_effects": False, "content_is_untrusted": True,
     }
-    if output_format == "text":
-        result["content"] = content[:30000]
-    elif output_format == "markdown":
-        result["content"] = content[:30000]
-    elif output_format == "json":
-        result["content"] = content[:30000]
-    return result
 
+
+def run_browser_fetch(url: str, output_format: str = "markdown", include_links: bool = True) -> dict:
+    """Automatically select the cheapest ready provider, then fail over safely."""
+    if output_format not in {"markdown", "text", "json"}:
+        raise ValueError("output_format must be markdown, text, or json")
+    if not isinstance(include_links, bool):
+        raise ValueError("include_links must be boolean")
+    target = _validate_url(url)
+    selected = os.environ.get("FLYBRAIN_WEB_FETCH_PROVIDER", "auto").strip().lower()
+    aliases = {"playwright": "cloudflare", "browser-run": "cloudflare", "browser_run": "cloudflare"}
+    selected = aliases.get(selected, selected)
+    if selected not in {"auto", "http", "browserless", "cloudflare"}:
+        raise BrowserUseNotConfigured("Unsupported FLYBRAIN_WEB_FETCH_PROVIDER; choose auto, http, cloudflare, browserless, or playwright")
+
+    errors = []
+    if selected == "http":
+        return _run_http_browser_fetch(target, output_format, include_links)
+    if selected == "browserless":
+        return run_browserless_fetch(target, output_format, include_links)
+    if selected == "cloudflare":
+        return run_cloudflare_playwright_fetch(target)
+
+    # Auto mode: use the free HTTP path first; render only when it appears necessary.
+    http_result = None
+    try:
+        http_result = _run_http_browser_fetch(target, output_format, include_links)
+        content = http_result.get("content", "")
+        compact = re.sub(r"\s+", " ", content).strip().lower()
+        javascript_shell = (
+            len(compact) < 220
+            or "enable javascript" in compact
+            or "javascript is required" in compact
+            or "please enable js" in compact
+            or ("<app-root" in compact and len(compact) < 1200)
+        )
+        if not javascript_shell:
+            return http_result
+    except Exception as exc:
+        errors.append("http: " + type(exc).__name__ + ": " + str(exc)[:180])
+
+    # Cloudflare Browser Run is attempted before Browserless; both require explicit
+    # configuration flags so automatic failover cannot silently create a bill.
+    if cloudflare_browser_status()["configured"]:
+        try:
+            result = run_cloudflare_playwright_fetch(target)
+            result["fallback_from"] = "http" if http_result else "http_error"
+            return result
+        except Exception as exc:
+            errors.append("cloudflare: " + type(exc).__name__ + ": " + str(exc)[:180])
+    if browserless_status()["configured"]:
+        try:
+            result = run_browserless_fetch(target, output_format, include_links)
+            result["fallback_from"] = "cloudflare_unavailable_or_failed"
+            return result
+        except Exception as exc:
+            errors.append("browserless: " + type(exc).__name__ + ": " + str(exc)[:180])
+
+    if http_result is not None:
+        http_result["rendering_fallbacks"] = errors
+        http_result["note"] = "The page was returned through the HTTP fallback; JavaScript-rendered content may be incomplete."
+        return http_result
+    raise BrowserUseNotConfigured("All configured page-fetch providers failed: " + " | ".join(errors[:3]))
 
 def run_browser_research(question: str, max_sources: int = 6) -> dict:
     if not isinstance(question, str) or not question.strip() or len(question) > 4000:

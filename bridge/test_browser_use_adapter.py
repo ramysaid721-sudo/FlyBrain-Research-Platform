@@ -13,6 +13,7 @@ def test_rejects_non_https_and_local_targets():
 
 def test_side_effects_require_explicit_approval(monkeypatch):
     monkeypatch.setenv("BROWSER_USE_PROVIDER", "ollama")
+    monkeypatch.setattr("flybrain_os.browser_use_adapter._validate_url", lambda value: (_ for _ in ()).throw(AssertionError("DNS validation must wait for approval")))
     result = run_browser_task("https://example.com", "Submit the contact form")
     assert result["status"] == "approval_required"
 
@@ -22,6 +23,7 @@ def test_unsupported_provider_is_not_ready(monkeypatch):
 
 def test_completed_task_uses_browser_use_api(monkeypatch):
     monkeypatch.setenv("BROWSER_USE_PROVIDER", "ollama")
+    monkeypatch.setattr("flybrain_os.browser_use_adapter._validate_url", lambda value: value)
     fake = types.ModuleType("browser_use")
     class FakeBrowser:
         def __init__(self, *args, **kwargs): pass

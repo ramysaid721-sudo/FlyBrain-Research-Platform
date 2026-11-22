@@ -55,6 +55,10 @@ def test_health_reports_http_research_and_interactive_browser_separately(tmp_pat
         "installed":False,"ready":False,"interactive_browser_ready":False,
         "web_search_ready":True,"web_fetch_ready":True,"provider":"ollama"
     })
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_status",lambda:{
+        "provider":"koofr_webdav","configured":False,"connection_verified":False,
+        "write_enabled":False,"ready":False,"credentials_exposed":False
+    })
     app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
     env={"REQUEST_METHOD":"GET","PATH_INFO":"/health","CONTENT_LENGTH":"0"}
     captured={}
@@ -65,6 +69,8 @@ def test_health_reports_http_research_and_interactive_browser_separately(tmp_pat
     assert payload["version"]=="0.16.0"
     assert payload["capabilities"]["public_web_search"] is True
     assert payload["capabilities"]["interactive_browser"] is False
+    assert payload["koofr_storage"]["configured"] is False
+    assert payload["koofr_storage"]["credentials_exposed"] is False
 
 
 def test_public_browser_search_tool_uses_http_adapter_without_token(tmp_path,monkeypatch):
@@ -103,3 +109,221 @@ def test_root_path_is_a_public_health_check(tmp_path,monkeypatch):
     assert captured["status"]=="200 OK"
     assert payload["service"]=="flybrain-mcp"
     assert payload["version"]=="0.16.0"
+
+
+def test_capability_registry_is_exposed_without_execution(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    response, body = call(app, {"jsonrpc": "2.0", "id": 20, "method": "tools/list"})
+    names = {tool["name"] for tool in body["result"]["tools"]}
+    assert {"capability_registry", "plan_task_route"} <= names
+    response, body = call(app, {"jsonrpc": "2.0", "id": 21, "method": "tools/call",
+                                "params": {"name": "capability_registry", "arguments": {}}}, "")
+    assert response["status"] == "200 OK"
+    assert body["result"]["structuredContent"]["execution_enabled"] is False
+
+
+def test_confidential_task_route_is_forced_to_local(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 22, "method": "tools/call",
+               "params": {"name": "plan_task_route", "arguments": {
+                   "objective": "Review confidential project notes",
+                   "data_classification": "confidential",
+                   "allowed_providers": ["local", "modelhub", "http_research"],
+                   "allow_network": True, "max_cost_usd": 0}}}
+    response, body = call(app, request, "")
+    plan = body["result"]["structuredContent"]
+    assert response["status"] == "200 OK"
+    assert plan["status"] == "route_planned"
+    assert plan["contract"]["allowed_providers"] == ["local"]
+    assert plan["contract"]["allow_network"] is False
+    assert plan["execution_started"] is False
+
+
+def test_execute_read_only_route_uses_public_search_adapter(tmp_path, monkeypatch):
+    token = "z" * 40
+    monkeypatch.setattr("flybrain_os.browser_use_adapter.run_browser_search",
+                        lambda query, max_results: {
+                            "status": "completed", "query": query,
+                            "results": [{"title": "Public source", "url": "https://example.org"}],
+                        })
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 23, "method": "tools/call",
+               "params": {"name": "execute_read_only_route", "arguments": {
+                   "objective": "Search public climate information",
+                   "capability_id": "web.public_search",
+                   "allow_network": True,
+                   "allowed_providers": ["http_research"],
+                   "arguments": {"query": "public climate information", "max_results": 2}}}}
+    response, body = call(app, request)
+    result = body["result"]["structuredContent"]
+    assert response["status"] == "200 OK"
+    assert result["execution_started"] is True
+    assert result["side_effects"] is False
+    assert result["result"]["results"][0]["url"] == "https://example.org"
+
+
+def test_execute_read_only_route_rejects_unapproved_arguments(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 24, "method": "tools/call",
+               "params": {"name": "execute_read_only_route", "arguments": {
+                   "objective": "Search", "capability_id": "web.public_search",
+                   "allow_network": True, "allowed_providers": ["http_research"],
+                   "arguments": {"query": "topic", "arbitrary": "not allowed"}}}}
+    response, body = call(app, request)
+    assert response["status"] == "400 Bad Request"
+
+
+def test_execute_local_project_context_route_keeps_confidential_data_local(tmp_path, monkeypatch):
+    token = "z" * 40
+    monkeypatch.setattr("flybrain_os.chat_api.retrieve_project_context",
+                        lambda question, limit=6: [{"source": "README.md", "excerpt": "Local result"}])
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 25, "method": "tools/call",
+               "params": {"name": "execute_read_only_route", "arguments": {
+                   "objective": "Retrieve confidential project context",
+                   "capability_id": "flybrain.project_context",
+                   "data_classification": "confidential",
+                   "allowed_providers": ["local"],
+                   "allow_network": False,
+                   "arguments": {"limit": 3}}}}
+    response, body = call(app, request)
+    result = body["result"]["structuredContent"]
+    assert response["status"] == "200 OK"
+    assert result["provider"] == "local"
+    assert result["data_classification"] == "confidential"
+    assert result["side_effects"] is False
+    assert result["result"]["sources"][0]["source"] == "README.md"
+
+
+
+def test_fase_component_compliance_tool_is_exposed_and_requires_auth(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    response, body = call(app, {"jsonrpc": "2.0", "id": 30, "method": "tools/list"})
+    names = {tool["name"] for tool in body["result"]["tools"]}
+    assert "evaluate_component_review" in names
+
+    request = {"jsonrpc": "2.0", "id": 31, "method": "tools/call",
+               "params": {"name": "evaluate_component_review", "arguments": {
+                   "component_record": {
+                       "component_id": "flybrain.native.service",
+                       "component_type": "original",
+                       "provenance_verified": True,
+                       "licence_review_status": "unreviewed",
+                       "clean_room_required": False,
+                       "clean_room_spec_approved": False,
+                       "restricted_material_accessed": False,
+                       "patent_review_required": False,
+                       "patent_review_status": "not_assessed",
+                       "trade_secret_review_status": "no_restricted_material",
+                       "terms_review_status": "approved",
+                       "security_review_status": "passed",
+                       "intended_use": "staging-only",
+                       "jurisdiction": "to-be-confirmed"
+                   }}}}
+    response, body = call(app, request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    response, body = call(app, request, token)
+    assert response["status"] == "200 OK"
+    assert body["result"]["structuredContent"]["decision"] == "eligible_for_human_approval"
+    assert body["result"]["structuredContent"]["release_eligible"] is True
+
+
+def test_fase_service_emulation_planner_is_authenticated_and_read_only(tmp_path):
+    token = "z" * 40
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 40, "method": "tools/call",
+               "params": {"name": "plan_service_emulation", "arguments": {
+                   "request": {
+                       "capability": "search",
+                       "required_features": ["full_text"],
+                       "data_classification": "public",
+                       "deployment_mode": "self_hosted",
+                       "candidates": [{
+                           "candidate_id": "native.search.v1",
+                           "capability": "search",
+                           "implementation_type": "original",
+                           "review_status": "approved",
+                           "licence_status": "approved",
+                           "provenance_verified": True,
+                           "terms_status": "approved",
+                           "security_status": "passed",
+                           "cost_state": "known_zero",
+                           "estimated_monthly_cost": 0,
+                           "supports_requirements": ["full_text"],
+                           "data_classes": ["public"],
+                           "deployment_modes": ["self_hosted"],
+                           "operationally_verified": True
+                       }]
+                   }}}}
+    response, body = call(app, request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    response, body = call(app, request, token)
+    assert response["status"] == "200 OK"
+    result = body["result"]["structuredContent"]
+    assert result["selected_candidate"]["candidate_id"] == "native.search.v1"
+    assert result["execution_performed"] is False
+    assert result["activation_performed"] is False
+
+
+def test_koofr_webdav_tools_are_authenticated_and_writes_are_explicit(tmp_path, monkeypatch):
+    token = "z" * 40
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_status", lambda: {
+        "provider": "koofr_webdav", "configured": False, "write_enabled": False,
+        "ready": False, "credentials_exposed": False
+    })
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_read", lambda key: {
+        "status": "completed", "object_key": key, "content_base64": "aGVsbG8="
+    })
+    captured = {}
+    def fake_write(key, content, confirm):
+        captured.update({"key": key, "content": content, "confirm": confirm})
+        return {"status": "completed", "object_key": key, "size_bytes": 5}
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_write", fake_write)
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+
+    status_request = {"jsonrpc": "2.0", "id": 50, "method": "tools/call",
+                      "params": {"name": "koofr_webdav_status", "arguments": {}}}
+    response, _ = call(app, status_request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    response, body = call(app, status_request, token)
+    assert response["status"] == "200 OK"
+    assert body["result"]["structuredContent"]["credentials_exposed"] is False
+
+    read_request = {"jsonrpc": "2.0", "id": 51, "method": "tools/call",
+                    "params": {"name": "koofr_webdav_read", "arguments": {"object_key": "a.txt"}}}
+    response, body = call(app, read_request, token)
+    assert body["result"]["structuredContent"]["content_base64"] == "aGVsbG8="
+
+    write_request = {"jsonrpc": "2.0", "id": 52, "method": "tools/call",
+                     "params": {"name": "koofr_webdav_write", "arguments": {
+                         "object_key": "a.txt", "content_base64": "aGVsbG8=", "confirm_write": True}}}
+    response, body = call(app, write_request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    response, body = call(app, write_request, token)
+    assert response["status"] == "200 OK"
+    assert captured == {"key": "a.txt", "content": "aGVsbG8=", "confirm": True}
+    assert body["result"]["structuredContent"]["size_bytes"] == 5
+
+
+
+def test_koofr_webdav_probe_is_authenticated_and_read_only(tmp_path, monkeypatch):
+    token = "z" * 40
+    captured = {"called": False}
+    def fake_probe():
+        captured["called"] = True
+        return {"status": "connected", "connection_verified": True, "http_status": 207}
+    monkeypatch.setattr("flybrain_os.mcp_server.koofr_webdav_probe", fake_probe)
+    app = FlyBrainMCP(FlyBrainChatApp(token, tmp_path / "db.sqlite"), token)
+    request = {"jsonrpc": "2.0", "id": 53, "method": "tools/call",
+               "params": {"name": "koofr_webdav_probe", "arguments": {}}}
+    response, _ = call(app, request, "invalid")
+    assert response["status"] == "401 Unauthorized"
+    assert captured["called"] is False
+    response, body = call(app, request, token)
+    assert response["status"] == "200 OK"
+    assert body["result"]["structuredContent"]["connection_verified"] is True
+    assert captured["called"] is True

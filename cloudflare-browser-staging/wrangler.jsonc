@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "flybrain-browser-staging",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-18",
+  "workers_dev": true,
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "browser": { "binding": "BROWSER" }
+}
