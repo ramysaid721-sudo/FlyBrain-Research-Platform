@@ -238,7 +238,8 @@ def browser_use_status() -> dict:
 
 
 def run_browser_task(url: str, goal: str, max_steps: int = 12, allow_side_effects: bool = False) -> dict:
-    target = _validate_url(url)
+    if not isinstance(url, str) or not url.strip() or len(url) > 2048:
+        raise ValueError("url must be a non-empty string of at most 2048 characters")
     if not isinstance(goal, str) or not goal.strip() or len(goal) > 8000:
         raise ValueError("goal must be a non-empty string of at most 8000 characters")
     if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 1 <= max_steps <= 30:
@@ -247,7 +248,10 @@ def run_browser_task(url: str, goal: str, max_steps: int = 12, allow_side_effect
         raise ValueError("allow_side_effects must be boolean")
     mutation_terms = re.compile(r"\b(send|submit|purchase|buy|pay|delete|remove|publish|post|upload|change password|change settings|invite|book|reserve|transfer|deploy)\b", re.IGNORECASE)
     if mutation_terms.search(goal) and not allow_side_effects:
-        return {"status": "approval_required", "message": "This goal may modify an account or submit information. Explicit approval is required.", "url": target, "steps": 0}
+        return {"status": "approval_required", "message": "This goal may modify an account or submit information. Explicit approval is required.", "url": url.strip(), "steps": 0}
+    # Do not perform DNS lookups or any network work before a potentially mutating
+    # task has passed its explicit-approval gate.
+    target = _validate_url(url)
     status = browser_use_status()
     if not status["installed"]:
         raise BrowserUseNotConfigured("Interactive browser control is unavailable: install Browser Use and Chromium on a compatible persistent browser host")
@@ -307,6 +311,7 @@ def run_browser_search(query: str, max_results: int = 8) -> dict:
     final_url, content_type, html = _http_get(search_url, timeout=12, max_bytes=1_000_000)
     parser = _SearchParser(max_results)
     parser.feed(html)
+    parser.close()
     results = []
     for item in parser.results[:max_results]:
         url = _normalise_search_url(item.get("url", ""))

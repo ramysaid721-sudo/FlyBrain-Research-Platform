@@ -87,3 +87,45 @@ test("Playwright fetch rejects non-HTTPS URLs before launching a browser", async
   );
   assert.equal(browserTouched, false);
 });
+
+
+test("URL validation rejects localhost, internal suffixes, and private numeric hosts", () => {
+  for (const value of [
+    "https://localhost/",
+    "https://service.internal/",
+    "https://printer.local/",
+    "https://127.0.0.1/",
+    "https://169.254.169.254/"
+  ]) {
+    const host = new URL(value).hostname;
+    assert.throws(() => validateUrl(value, [host]));
+  }
+});
+
+test("Playwright fetch uses the injected Browser Run binding and closes the browser", async () => {
+  let routeHandler;
+  let closed = false;
+  const page = {
+    async route(pattern, handler) { assert.equal(pattern, "**/*"); routeHandler = handler; },
+    async goto(url) { assert.equal(url, "https://example.com/"); return { status: () => 200 }; },
+    url() { return "https://example.com/"; },
+    async evaluate() { return { title: "Example Domain", text: "Example content" }; }
+  };
+  const browser = {
+    async newPage() { return page; },
+    async close() { closed = true; }
+  };
+  const mockEnv = { BROWSER: { async launch() { return browser; } } };
+  const result = await callTool("browser_playwright_fetch", { url: "https://example.com/" }, mockEnv);
+  assert.equal(result.isError, false);
+  assert.match(result.content[0].text, /Example Domain/);
+  assert.equal(closed, true);
+
+  let aborted = false;
+  await routeHandler({
+    request() { return { url: () => "https://attacker.example/" }; },
+    async abort() { aborted = true; },
+    async continue() { throw new Error("cross-host request must not continue"); }
+  });
+  assert.equal(aborted, true);
+});

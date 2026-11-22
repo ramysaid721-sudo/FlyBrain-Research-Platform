@@ -1,5 +1,3 @@
-import { launch } from "@cloudflare/playwright";
-
 const VERSION = "0.2.0-staging";
 const MAX_BODY = 65536;
 const MAX_TEXT = 24000;
@@ -212,7 +210,9 @@ async function callTool(name, args, env) {
       if (parsed.protocol !== "https:") throw new Error("Only public HTTPS URLs are allowed");
       const host = parsed.hostname.toLowerCase();
       const url = validateUrl(args.url, [host]);
-      const browser = await launch(env.BROWSER);
+      const browser = typeof env.BROWSER?.launch === "function"
+        ? await env.BROWSER.launch()
+        : await (await import("@cloudflare/playwright")).launch(env.BROWSER);
       try {
         const page = await browser.newPage();
         await page.route("**/*", async (route) => {
