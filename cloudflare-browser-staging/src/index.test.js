@@ -102,6 +102,26 @@ test("URL validation rejects localhost, internal suffixes, and private numeric h
   }
 });
 
+test("Playwright fetch rejects redirects to a different hostname", async () => {
+  let closed = false;
+  const page = {
+    async route() {},
+    async goto() { return { status: () => 302 }; },
+    url() { return "https://attacker.example/"; },
+    async evaluate() { return { title: "", text: "" }; }
+  };
+  const browser = {
+    async newPage() { return page; },
+    async close() { closed = true; }
+  };
+  const mockEnv = { BROWSER: { async launch() { return browser; } } };
+  await assert.rejects(
+    () => callTool("browser_playwright_fetch", { url: "https://example.com/" }, mockEnv),
+    /Final navigation left the exact permitted hostname/
+  );
+  assert.equal(closed, true);
+});
+
 test("Playwright fetch uses the injected Browser Run binding and closes the browser", async () => {
   let routeHandler;
   let closed = false;
