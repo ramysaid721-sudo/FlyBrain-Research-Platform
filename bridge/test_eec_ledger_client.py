@@ -1,7 +1,10 @@
 import json
 from urllib.request import Request
 
-from bridge import eec_ledger_client as ledger
+try:
+    from flybrain_os import eec_ledger_client as ledger
+except ImportError:
+    from bridge import eec_ledger_client as ledger
 
 
 class FakeResponse:
