@@ -221,6 +221,8 @@ class FlyBrainMCP:
                     except EECLedgerError as exc:
                         return self.send(start, "503 Service Unavailable",
                                          self._tool_result(mid, {"status": "ledger_unavailable", "reason": str(exc)}, True))
+                    if result.get("status") == "not_connected":
+                        return self.send(start, "503 Service Unavailable", self._tool_result(mid, result, True))
                     if result.get("status") != "ok":
                         return self.send(start, "404 Not Found", self._tool_result(mid, result, True))
                     return self.send(start, "200 OK", self._tool_result(mid, result))
