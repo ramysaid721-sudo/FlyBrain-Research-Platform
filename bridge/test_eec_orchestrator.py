@@ -28,6 +28,12 @@ class EECOrchestratorTests(unittest.TestCase):
         self.assertEqual(len(synthesis["depends_on"]), 1)
         self.assertEqual(plan["execution_readiness"], "blocked_pending_durable_worker_and_zero_cost_provider_gate")
 
+    def test_identical_inputs_produce_identical_plan_hash(self):
+        first = build_plan("Reproducible plan", "engineering", "internal", 3)
+        second = build_plan("Reproducible plan", "engineering", "internal", 3)
+        self.assertEqual(first["plan_id"], second["plan_id"])
+        self.assertEqual(first["plan_sha256"], second["plan_sha256"])
+
     def test_parallelism_is_bounded(self):
         with self.assertRaises(EECPlanError):
             build_plan("Test", max_parallel_tasks=5)
