@@ -63,3 +63,21 @@ def test_plan_status_rejects_invalid_uuid_before_network(monkeypatch):
         pass
     else:
         raise AssertionError("invalid UUID must be rejected")
+
+def test_client_rejects_non_staging_endpoint(monkeypatch):
+    monkeypatch.setenv("SUPABASE_EEC_LEDGER_URL", "https://attacker.example/functions/v1/flybrain-eec-ledger")
+    monkeypatch.setenv("FLYBRAIN_EEC_LEDGER_TOKEN", "x" * 64)
+    status = ledger.ledger_status()
+    assert status["configured"] is False
+
+
+def test_plan_status_uses_authenticated_readback(monkeypatch):
+    configure(monkeypatch)
+    captured = {}
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        return FakeResponse({"status": "ok", "plan": {"status": "planned"}})
+    monkeypatch.setattr(ledger, "urlopen", fake_urlopen)
+    result = ledger.get_plan_status("12233a4b-be9b-5bf5-969c-f1eb278545eb")
+    assert result["plan"]["status"] == "planned"
+    assert json.loads(captured["request"].data)["action"] == "plan_status"
