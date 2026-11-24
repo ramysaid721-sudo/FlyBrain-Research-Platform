@@ -1,5 +1,8 @@
 import unittest
-from bridge.eec_orchestrator import EECPlanError, build_plan, eec_status
+try:
+    from flybrain_os.eec_orchestrator import EECPlanError, build_plan, eec_status
+except ImportError:
+    from bridge.eec_orchestrator import EECPlanError, build_plan, eec_status
 
 
 class EECOrchestratorTests(unittest.TestCase):
