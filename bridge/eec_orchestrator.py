@@ -70,6 +70,8 @@ def build_plan(objective: str, task_kind: str = "general",
     if type(max_parallel_tasks) is not int or not 1 <= max_parallel_tasks <= MAX_PARALLEL_TASKS:
         raise EECPlanError(f"max_parallel_tasks must be an integer from 1 to {MAX_PARALLEL_TASKS}")
 
+    objective_hash = _digest(objective.strip())
+    plan_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{EEC_VERSION}:{objective_hash}:{task_kind}:{data_classification}:{max_parallel_tasks}"))
     specs: list[tuple[str, str, list[str]]] = [("strategic_planner", "decompose", [])]
     if task_kind == "research":
         specs += [("research_specialist", "evidence_collection", ["decompose"]),
@@ -110,11 +112,11 @@ def build_plan(objective: str, task_kind: str = "general",
         terminal = ["evidence_collection", "risk_review", "acceptance_tests", "performance_review"]
     specs.append(("synthesizer", "evidence_synthesis", terminal))
 
-    ids = {key: str(uuid.uuid4()) for _, key, _ in specs}
+    ids = {key: str(uuid.uuid5(uuid.UUID(plan_id), key)) for _, key, _ in specs}
     tasks = [{
         "task_id": ids[key], "role": role, "role_description": ROLES[role],
         "task_type": key, "depends_on": [ids[d] for d in deps],
-        "input_ref": {"objective_sha256": _digest(objective.strip())},
+        "input_ref": {"objective_sha256": objective_hash},
         "acceptance_criteria": [
             "Return structured findings with evidence or an explicit evidence gap.",
             "Do not infer completion from another agent's status message.",
@@ -134,9 +136,9 @@ def build_plan(objective: str, task_kind: str = "general",
         completed.update(ready)
 
     plan = {
-        "plan_id": str(uuid.uuid4()), "eec_version": EEC_VERSION, "status": "planned",
+        "plan_id": plan_id, "eec_version": EEC_VERSION, "status": "planned",
         "task_kind": task_kind, "data_classification": data_classification,
-        "objective_sha256": _digest(objective.strip()), "objective": objective.strip(),
+        "objective_sha256": objective_hash, "objective": objective.strip(),
         "tasks": tasks, "execution_waves": waves,
         "policy": {
             "max_parallel_tasks": max_parallel_tasks, "max_spend": 0,
