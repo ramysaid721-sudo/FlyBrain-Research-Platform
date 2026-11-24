@@ -25,7 +25,10 @@ class EECLedgerError(RuntimeError):
 def _configuration() -> tuple[str, str]:
     endpoint = os.environ.get("SUPABASE_EEC_LEDGER_URL", "").strip()
     token = os.environ.get("FLYBRAIN_EEC_LEDGER_TOKEN", "").strip()
-    parsed = urlsplit(endpoint)
+    try:
+        parsed = urlsplit(endpoint)
+    except ValueError:
+        return "", ""
     if (
         parsed.scheme != "https"
         or parsed.hostname != EXPECTED_HOST
