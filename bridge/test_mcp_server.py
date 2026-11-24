@@ -19,6 +19,30 @@ def test_interactive_browser_task_requires_bearer_token(tmp_path):
     response,body=call(app,request,"bad")
     assert response["status"]=="401 Unauthorized"
 
+def test_eec_tools_are_discoverable_and_read_only(tmp_path):
+    token="z"*40
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    response,body=call(app,{"jsonrpc":"2.0","id":10,"method":"tools/list"})
+    tools={tool["name"]:tool for tool in body["result"]["tools"]}
+    assert {"eec_status","eec_plan","eec_submit_plan","eec_plan_status"} <= set(tools)
+    assert tools["eec_submit_plan"]["annotations"]["readOnlyHint"] is False
+    assert tools["eec_plan"]["annotations"]["readOnlyHint"] is True
+
+
+def test_eec_plan_tool_returns_bounded_zero_cost_plan(tmp_path):
+    token="z"*40
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    request={"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"eec_plan","arguments":{"objective":"Build an isolated EEC planning layer","task_kind":"engineering"}}}
+    response,body=call(app,request,"")
+    plan=body["result"]["structuredContent"]
+    assert response["status"]=="200 OK"
+    assert plan["status"]=="planned"
+    assert plan["policy"]["max_spend"]==0
+    assert plan["policy"]["provider_calls_enabled"] is False
+    assert plan["policy"]["external_data_transfer"] is False
+    assert plan["execution_readiness"]=="blocked_pending_typed_worker_and_zero_cost_provider_gate"
+
+
 def test_initialize_and_tool_discovery(tmp_path):
     token="z"*40
     app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
@@ -103,3 +127,32 @@ def test_root_path_is_a_public_health_check(tmp_path,monkeypatch):
     assert captured["status"]=="200 OK"
     assert payload["service"]=="flybrain-mcp"
     assert payload["version"]=="0.16.0"
+
+def test_eec_submit_plan_requires_authentication_and_persists_plan(tmp_path,monkeypatch):
+    token="z"*40
+    monkeypatch.setattr("flybrain_os.mcp_server.persist_plan",lambda plan:{
+        "status":"ok","result":{"status":"persisted","plan_id":plan["plan_id"],"task_count":len(plan["tasks"])}
+    })
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    request={"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"eec_submit_plan","arguments":{
+        "objective":"Build the Staging EEC plan ledger","task_kind":"engineering"
+    }}}
+    response,_=call(app,request,"bad")
+    assert response["status"]=="401 Unauthorized"
+    response,body=call(app,request,token)
+    assert response["status"]=="200 OK"
+    assert body["result"]["structuredContent"]["result"]["status"]=="persisted"
+
+
+def test_eec_plan_status_requires_authentication(tmp_path,monkeypatch):
+    token="z"*40
+    monkeypatch.setattr("flybrain_os.mcp_server.get_plan_status",lambda plan_id:{"status":"ok","plan":{"plan_id":plan_id}})
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    request={"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"eec_plan_status","arguments":{
+        "plan_id":"12233a4b-be9b-5bf5-969c-f1eb278545eb"
+    }}}
+    response,_=call(app,request,"")
+    assert response["status"]=="401 Unauthorized"
+    response,body=call(app,request,token)
+    assert response["status"]=="200 OK"
+    assert body["result"]["structuredContent"]["status"]=="ok"

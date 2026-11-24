@@ -12,6 +12,12 @@ PATCHES = {
     ROOT / "bridge" / "test_mcp_server.py": Path("components/FlyBrain-NOS/tests/test_mcp_server.py"),
     ROOT / "bridge" / "browser_use_adapter.py": Path("components/FlyBrain-NOS/flybrain_os/browser_use_adapter.py"),
     ROOT / "bridge" / "tool_manager.py": Path("components/FlyBrain-NOS/flybrain_os/tool_manager.py"),
+    ROOT / "bridge" / "eec_orchestrator.py": Path("components/FlyBrain-NOS/flybrain_os/eec_orchestrator.py"),
+    ROOT / "bridge" / "eec_ledger_client.py": Path("components/FlyBrain-NOS/flybrain_os/eec_ledger_client.py"),
+    ROOT / "bridge" / "eec_queue_contract.py": Path("components/FlyBrain-NOS/flybrain_os/eec_queue_contract.py"),
+    ROOT / "bridge" / "test_eec_ledger_client.py": Path("components/FlyBrain-NOS/tests/test_eec_ledger_client.py"),
+    ROOT / "bridge" / "test_eec_queue_contract.py": Path("components/FlyBrain-NOS/tests/test_eec_queue_contract.py"),
+    ROOT / "bridge" / "test_eec_orchestrator.py": Path("components/FlyBrain-NOS/tests/test_eec_orchestrator.py"),
     ROOT / "bridge" / "test_browser_use_adapter.py": Path("components/FlyBrain-NOS/tests/test_browser_use_adapter.py"),
 }
 
