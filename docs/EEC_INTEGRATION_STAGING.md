@@ -63,3 +63,8 @@ Vercel automatically generated a Preview deployment for the pull request. No Pro
 - MCP exposes read-only eec_status, eec_plan, and eec_plan_status, plus authenticated eec_submit_plan for durable plan persistence.
 - Existing MCP, queue, and research behavior remains unchanged.
 - No live inference, external transfer, billing, Production changes, or deployment occurs in this phase.
+
+
+## EEC ↔ existing PGMQ contract
+
+A separate contract implementation and design specification now exist in `bridge/eec_queue_contract.py`, `bridge/test_eec_queue_contract.py`, and `docs/EEC_PGMQ_INTEGRATION_CONTRACT.md`. The queue message is restricted to the EEC task UUID; the queue ledger payload is restricted to run/task UUIDs. The pure contract validates exact payload keys, typed claims, UUID correlation, and a stricter synthesis dependency gate. The release overlay and CI workflow now include this contract test. This is not a database migration, enqueue operation, worker dispatch, or live execution path. The existing EEC plan remains planned.
