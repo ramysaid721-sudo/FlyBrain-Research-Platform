@@ -49,7 +49,8 @@ class FlyBrainMCP:
                     "public_page_extraction": True,
                     "multi_source_research": True,
                     "interactive_browser": browser.get("interactive_browser_ready", False),
-                    "persistent_browser_profiles": False
+                    "persistent_browser_profiles": False,
+                    "eec_planning": True
                 },
                 "browser_status": browser
             })
