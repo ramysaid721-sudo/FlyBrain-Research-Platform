@@ -2,7 +2,7 @@ name: FlyBrain Research Platform CI
 
 on:
   push:
-    branches: [main, develop, "feat/**"]
+    branches: [main, develop, "feat/**", "eec/**"]
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
