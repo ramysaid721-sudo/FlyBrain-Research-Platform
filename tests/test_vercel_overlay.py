@@ -9,6 +9,7 @@ class VercelOverlayTests(unittest.TestCase):
         module = root / "bridge" / "eec_orchestrator.py"
         self.assertTrue(module.is_file())
         self.assertIn('"eec_orchestrator.py"', entrypoint)
+        self.assertIn('"eec_ledger_client.py"', entrypoint)
 
 
 if __name__ == "__main__":
