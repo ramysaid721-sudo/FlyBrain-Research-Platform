@@ -52,7 +52,7 @@ def eec_status() -> dict[str, Any]:
         "max_parallel_tasks": MAX_PARALLEL_TASKS,
         "roles": list(ROLES),
         "execution_blockers": [
-            "Connect a durable agent-attempt ledger and worker contract.",
+            "Connect the persistence RPC to an authenticated plan-submission path and typed URCAL worker contract.",
             "Verify fresh, model-specific zero-cost and quota evidence before live inference.",
             "Keep provider and tool permissions isolated and fail-closed.",
         ],
@@ -148,7 +148,7 @@ def build_plan(objective: str, task_kind: str = "general",
             "live_execution": False, "human_approval_required_for_side_effects": True,
             "production_access": False,
         },
-        "execution_readiness": "blocked_pending_durable_worker_and_zero_cost_provider_gate",
+        "execution_readiness": "blocked_pending_submission_worker_and_zero_cost_provider_gate",
         "disclaimer": "Plan only. No agents, models, tools, or external services were invoked.",
     }
     plan["plan_sha256"] = _digest(plan)
