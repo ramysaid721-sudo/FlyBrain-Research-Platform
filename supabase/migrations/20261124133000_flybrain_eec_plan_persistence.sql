@@ -13,6 +13,9 @@ create table if not exists private.flybrain_agent_artifacts (
   unique (task_id, artifact_type)
 );
 
+create index if not exists flybrain_agent_artifacts_run_idx
+  on private.flybrain_agent_artifacts (run_id, created_at desc);
+
 alter table private.flybrain_agent_artifacts enable row level security;
 revoke all on table private.flybrain_agent_artifacts from public, anon, authenticated;
 grant usage on schema private to service_role;
