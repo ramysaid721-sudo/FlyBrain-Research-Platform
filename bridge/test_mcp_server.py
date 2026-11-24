@@ -19,6 +19,29 @@ def test_interactive_browser_task_requires_bearer_token(tmp_path):
     response,body=call(app,request,"bad")
     assert response["status"]=="401 Unauthorized"
 
+def test_eec_tools_are_discoverable_and_read_only(tmp_path):
+    token="z"*40
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    response,body=call(app,{"jsonrpc":"2.0","id":10,"method":"tools/list"})
+    tools={tool["name"]:tool for tool in body["result"]["tools"]}
+    assert {"eec_status","eec_plan"} <= set(tools)
+    assert tools["eec_plan"]["annotations"]["readOnlyHint"] is True
+
+
+def test_eec_plan_tool_returns_bounded_zero_cost_plan(tmp_path):
+    token="z"*40
+    app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
+    request={"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"eec_plan","arguments":{"objective":"Build an isolated EEC planning layer","task_kind":"engineering"}}}
+    response,body=call(app,request,"")
+    plan=body["result"]["structuredContent"]
+    assert response["status"]=="200 OK"
+    assert plan["status"]=="planned"
+    assert plan["policy"]["max_spend"]==0
+    assert plan["policy"]["provider_calls_enabled"] is False
+    assert plan["policy"]["external_data_transfer"] is False
+    assert plan["execution_readiness"]=="blocked_pending_durable_worker_and_zero_cost_provider_gate"
+
+
 def test_initialize_and_tool_discovery(tmp_path):
     token="z"*40
     app=FlyBrainMCP(FlyBrainChatApp(token,tmp_path/"db.sqlite"),token)
