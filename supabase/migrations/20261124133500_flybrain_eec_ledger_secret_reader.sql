@@ -1,7 +1,7 @@
 create or replace function private.flybrain_eec_ledger_secret(p_name text)
 returns text
 language plpgsql
-security definer
+security invoker
 set search_path = pg_catalog, vault
 as $$
 declare v_secret text;
