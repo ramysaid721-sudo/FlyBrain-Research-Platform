@@ -44,7 +44,8 @@ class EECOrchestratorTests(unittest.TestCase):
 
     def test_invalid_inputs_fail_closed(self):
         for args in [("", "general", "internal", 2), ("x" * 8001, "general", "internal", 2),
-                     ("Test", "unknown", "internal", 2), ("Test", "general", "private", 2)]:
+                     ("Test", "unknown", "internal", 2), ("Test", "general", "private", 2),
+                     ("Test", [], "internal", 2), ("Test", "general", [], 2)]:
             with self.assertRaises(EECPlanError):
                 build_plan(*args)
 
