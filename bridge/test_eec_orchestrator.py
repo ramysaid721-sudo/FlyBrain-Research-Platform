@@ -19,6 +19,18 @@ class EECOrchestratorTests(unittest.TestCase):
         self.assertFalse(status["persistent_agent_ledger_connected"])
         self.assertFalse(status["persistent_agent_ledger_connected"])
 
+    def test_ledger_configuration_is_not_mistaken_for_verified_connectivity(self):
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, {
+            "SUPABASE_EEC_LEDGER_URL": "https://iudimypauqbkyvjuprgp.supabase.co/functions/v1/flybrain-eec-ledger",
+            "FLYBRAIN_EEC_LEDGER_TOKEN": "x" * 64,
+        }):
+            status = eec_status()
+        self.assertTrue(status["persistent_agent_ledger_configured"])
+        self.assertFalse(status["persistent_agent_ledger_connected"])
+        self.assertFalse(status["live_agent_execution"])
+
     def test_engineering_plan_has_independent_review_lanes(self):
         plan = build_plan("Add a guarded multi-agent execution layer", "engineering")
         roles = {task["role"] for task in plan["tasks"]}
