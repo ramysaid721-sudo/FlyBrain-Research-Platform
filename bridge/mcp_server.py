@@ -7,6 +7,7 @@ from wsgiref.simple_server import make_server
 from .chat_api import FlyBrainChatApp
 from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
 from .eec_orchestrator import EECPlanError, eec_status, build_plan
+from .eec_ledger_client import EECLedgerError, ledger_status, persist_plan, get_plan_status
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -42,7 +43,7 @@ class FlyBrainMCP:
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "eec_status", "eec_plan"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "eec_status", "eec_plan", "eec_submit_plan", "eec_plan_status"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
@@ -50,7 +51,8 @@ class FlyBrainMCP:
                     "multi_source_research": True,
                     "interactive_browser": browser.get("interactive_browser_ready", False),
                     "persistent_browser_profiles": False,
-                    "eec_planning": True
+                    "eec_planning": True,
+                    "eec_durable_plan_submission": ledger_status()["configured"]
                 },
                 "browser_status": browser
             })
@@ -148,6 +150,21 @@ class FlyBrainMCP:
                          "max_parallel_tasks": {"type": "integer", "minimum": 1, "maximum": 4, "default": 3}},
                          "required": ["objective"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "eec_submit_plan", "title": "Persist an EEC plan to Staging",
+                     "description": "Build and persist a bounded EEC plan in the authenticated Staging ledger. Stores hashes and task metadata only; does not execute agents or contact model providers.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "objective": {"type": "string", "minLength": 1, "maxLength": 8000},
+                         "task_kind": {"type": "string", "enum": ["general", "research", "engineering", "security", "performance", "documentation"], "default": "general"},
+                         "data_classification": {"type": "string", "enum": ["public", "internal", "confidential"], "default": "internal"},
+                         "max_parallel_tasks": {"type": "integer", "minimum": 1, "maximum": 4, "default": 3}},
+                         "required": ["objective"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": False, "openWorldHint": False}},
+                    {"name": "eec_plan_status", "title": "Read EEC plan status",
+                     "description": "Read status counts for a persisted Staging EEC plan. Requires authenticated access.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "plan_id": {"type": "string", "format": "uuid"}},
+                         "required": ["plan_id"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -180,6 +197,33 @@ class FlyBrainMCP:
                     except EECPlanError as exc:
                         raise ValueError(str(exc)) from exc
                     return self.send(start, "200 OK", self._tool_result(mid, plan))
+                if name == "eec_submit_plan":
+                    if set(args) - {"objective", "task_kind", "data_classification", "max_parallel_tasks"}:
+                        raise ValueError("Unexpected eec_submit_plan argument")
+                    try:
+                        plan = build_plan(args.get("objective"), args.get("task_kind", "general"),
+                                          args.get("data_classification", "internal"),
+                                          args.get("max_parallel_tasks", 3))
+                        result = persist_plan(plan)
+                    except EECPlanError as exc:
+                        raise ValueError(str(exc)) from exc
+                    except EECLedgerError as exc:
+                        return self.send(start, "503 Service Unavailable",
+                                         self._tool_result(mid, {"status": "ledger_unavailable", "reason": str(exc)}, True))
+                    if result.get("status") != "ok":
+                        return self.send(start, "503 Service Unavailable", self._tool_result(mid, result, True))
+                    return self.send(start, "200 OK", self._tool_result(mid, result))
+                if name == "eec_plan_status":
+                    if set(args) != {"plan_id"} or not isinstance(args.get("plan_id"), str):
+                        raise ValueError("eec_plan_status requires plan_id")
+                    try:
+                        result = get_plan_status(args["plan_id"])
+                    except EECLedgerError as exc:
+                        return self.send(start, "503 Service Unavailable",
+                                         self._tool_result(mid, {"status": "ledger_unavailable", "reason": str(exc)}, True))
+                    if result.get("status") != "ok":
+                        return self.send(start, "404 Not Found", self._tool_result(mid, result, True))
+                    return self.send(start, "200 OK", self._tool_result(mid, result))
                 if name == "tool_catalog":
                     if args:
                         raise ValueError("tool_catalog accepts no arguments")
