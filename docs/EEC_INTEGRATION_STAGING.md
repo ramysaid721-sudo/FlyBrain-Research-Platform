@@ -29,6 +29,18 @@ The EEC layer supplies bounded task decomposition, role assignment, dependency g
 
 Plans are represented as a dependency graph and partitioned into bounded waves. Independent tasks may share a wave; dependent tasks cannot. Parallelism is capped at four. The planner does not claim that a planned task has run.
 
+## Staging database foundation
+
+Applied and verified on the existing free-tier Staging Supabase project:
+- Migration 20261124131058 creates private run, task, attempt, and event ledgers.
+- Migration 20261124131109 adds the task-event lookup index.
+- Migration 20261124131126 removes DELETE permission from the service role to preserve the audit history.
+- All four tables have RLS enabled; anon and authenticated have no SELECT access; service_role has the required operational permissions.
+- Spend is constrained to exactly zero and external data transfer to false at the database level.
+- The ledger stores hashes and policy metadata, not raw objectives, prompts, or credentials.
+
+The existing worker still handles only research_search. The new ledger is not yet connected to a task-claim/execute worker, and no EEC agent execution has been activated.
+
 ## Remaining implementation gates
 
 1. Inspect and extend the existing packaged ModelHub adapter contract without creating a second provider registry.
