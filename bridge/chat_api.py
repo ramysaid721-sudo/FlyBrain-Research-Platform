@@ -12,7 +12,35 @@ import os
 import re
 from pathlib import Path
 from wsgiref.simple_server import make_server
-from .model_hub import ModelConsultation
+from . import model_hub
+from .model_data_scanner import assert_external_model_payload_safe
+
+ModelConsultation = model_hub.ModelConsultation
+
+
+def _guarded_post_chat(
+    provider, prompt, *, timeout=45, data_class, contains_secrets, contains_personal_data
+):
+    """Screen the exact serialized request immediately before network transfer."""
+    def checked_opener(request, timeout=45):
+        body = getattr(request, "data", None)
+        if not isinstance(body, (bytes, bytearray)):
+            raise ValueError("serialized provider payload is unavailable")
+        try:
+            serialized_payload = body.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError("serialized provider payload is not UTF-8") from None
+        assert_external_model_payload_safe(
+            serialized_payload=serialized_payload,
+            data_class=data_class,
+            contains_secrets=contains_secrets,
+            contains_personal_data=contains_personal_data,
+        )
+        return model_hub.urllib.request.urlopen(request, timeout=timeout)
+
+    return model_hub._post_chat(
+        provider, prompt, timeout=timeout, opener=checked_opener
+    )
 
 def retrieve_project_context(question: str, release_root: str | Path | None = None, limit: int = 6) -> list[dict]:
     """Return ranked, source-labelled project excerpts without external APIs."""
@@ -105,7 +133,23 @@ class FlyBrainChatApp:
                 context = retrieve_project_context(question.strip())
                 context_text = "\n\n".join(x["source"] + ": " + x["excerpt"] for x in context)
                 enriched_question = question.strip() + ("\n\nProject evidence context:\n" + context_text if context_text else "")
-                result = self._consultation.consult(enriched_question, timeout=int(timeout))
+                providers = model_hub.discover_providers()
+                caller = None
+                if providers:
+                    # A client-supplied attestation is not trusted provenance.
+                    # Until a server-side classifier/provenance gate is wired
+                    # into this path, fail closed and do not invoke any provider.
+                    return self._response(start_response, "503 Service Unavailable", {
+                        "error": "external_inference_disabled",
+                        "reason": "trusted_server_side_data_classification_unavailable",
+                        "external_data_transfer": False,
+                    })
+                result = self._consultation.consult(
+                    enriched_question,
+                    timeout=int(timeout),
+                    providers=providers,
+                    caller=caller,
+                )
                 if result["status"] == "no_providers_configured":
                     return self._response(start_response, "200 OK", {
                         "status": "context_only",

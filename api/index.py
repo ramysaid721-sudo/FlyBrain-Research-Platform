@@ -62,6 +62,13 @@ def _ensure_release() -> None:
             raise RuntimeError("Missing FlyBrain bridge overlay: " + filename)
         shutil.copy2(source, package_root / filename)
 
+    # Reuse the same fail-closed policy/scanner in the deployed FlyBrain package.
+    for filename in ("model_data_policy.py", "model_data_scanner.py"):
+        source = ROOT / "worker" / filename
+        if not source.is_file():
+            raise RuntimeError("Missing external-model data guard: " + filename)
+        shutil.copy2(source, package_root / filename)
+
     sys.path.insert(0, str(RELEASE_ROOT / "components/FlyBrain-NOS"))
 
 

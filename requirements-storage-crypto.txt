@@ -1,0 +1,2 @@
+# Optional, exact-pinned dependency for the Staging envelope-encryption adapter.
+cryptography==46.0.4
