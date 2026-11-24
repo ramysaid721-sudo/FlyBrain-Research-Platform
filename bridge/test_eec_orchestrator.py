@@ -13,6 +13,7 @@ class EECOrchestratorTests(unittest.TestCase):
         self.assertFalse(status["provider_inference"])
         self.assertEqual(status["zero_cost_policy"], "hard_zero")
         self.assertTrue(status["persistent_agent_ledger_provisioned"])
+        self.assertTrue(status["persistent_plan_persistence_rpc"])
         self.assertFalse(status["persistent_agent_ledger_connected"])
 
     def test_engineering_plan_has_independent_review_lanes(self):
