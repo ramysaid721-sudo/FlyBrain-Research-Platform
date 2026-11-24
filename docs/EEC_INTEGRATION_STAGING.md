@@ -39,7 +39,7 @@ Applied and verified on the existing free-tier Staging Supabase project:
 - Spend is constrained to exactly zero and external data transfer to false at the database level.
 - The ledger stores hashes and policy metadata, not raw objectives, prompts, or credentials.
 
-The existing worker still handles only research_search. The new ledger is not yet connected to a task-claim/execute worker, and no EEC agent execution has been activated.
+The existing worker still handles only research_search. The new ledger is provisioned but not yet connected to a task-claim/execute worker, and no EEC agent execution has been activated.
 
 ## Deployment boundary
 
