@@ -29,7 +29,7 @@ class EECOrchestratorTests(unittest.TestCase):
         plan = build_plan("Review recent research", "research")
         synthesis = next(task for task in plan["tasks"] if task["role"] == "synthesizer")
         self.assertEqual(len(synthesis["depends_on"]), 1)
-        self.assertEqual(plan["execution_readiness"], "blocked_pending_durable_worker_and_zero_cost_provider_gate")
+        self.assertEqual(plan["execution_readiness"], "blocked_pending_submission_worker_and_zero_cost_provider_gate")
 
     def test_identical_inputs_produce_identical_plan_hash(self):
         first = build_plan("Reproducible plan", "engineering", "internal", 3)
