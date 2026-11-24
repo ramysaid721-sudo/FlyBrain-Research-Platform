@@ -64,9 +64,9 @@ def build_plan(objective: str, task_kind: str = "general",
                max_parallel_tasks: int = 3) -> dict[str, Any]:
     if not isinstance(objective, str) or not objective.strip() or len(objective) > MAX_OBJECTIVE_CHARS:
         raise EECPlanError(f"objective must contain 1..{MAX_OBJECTIVE_CHARS} characters")
-    if task_kind not in TASK_KINDS:
+    if not isinstance(task_kind, str) or task_kind not in TASK_KINDS:
         raise EECPlanError("unsupported task_kind")
-    if data_classification not in {"public", "internal", "confidential", "prohibited"}:
+    if not isinstance(data_classification, str) or data_classification not in {"public", "internal", "confidential", "prohibited"}:
         raise EECPlanError("unsupported data_classification")
     if type(max_parallel_tasks) is not int or not 1 <= max_parallel_tasks <= MAX_PARALLEL_TASKS:
         raise EECPlanError(f"max_parallel_tasks must be an integer from 1 to {MAX_PARALLEL_TASKS}")
