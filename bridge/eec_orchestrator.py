@@ -46,6 +46,7 @@ def eec_status() -> dict[str, Any]:
         "provider_inference": False,
         "external_data_transfer": False,
         "persistent_agent_ledger_provisioned": True,
+        "persistent_plan_persistence_rpc": True,
         "persistent_agent_ledger_connected": False,
         "zero_cost_policy": "hard_zero",
         "max_parallel_tasks": MAX_PARALLEL_TASKS,
