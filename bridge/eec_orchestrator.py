@@ -6,6 +6,7 @@ transfer data to providers, execute tools, or claim that agents ran.
 from __future__ import annotations
 import hashlib
 import json
+import os
 import uuid
 from typing import Any
 
@@ -48,13 +49,13 @@ def eec_status() -> dict[str, Any]:
         "persistent_agent_ledger_provisioned": True,
         "persistent_plan_persistence_rpc": True,
         "persistent_plan_submission_endpoint": True,
-        "mcp_plan_submission_connected": False,
-        "persistent_agent_ledger_connected": False,
+        "mcp_plan_submission_connected": bool(os.environ.get("SUPABASE_EEC_LEDGER_URL") and os.environ.get("FLYBRAIN_EEC_LEDGER_TOKEN")),
+        "persistent_agent_ledger_connected": bool(os.environ.get("SUPABASE_EEC_LEDGER_URL") and os.environ.get("FLYBRAIN_EEC_LEDGER_TOKEN")),
         "zero_cost_policy": "hard_zero",
         "max_parallel_tasks": MAX_PARALLEL_TASKS,
         "roles": list(ROLES),
         "execution_blockers": [
-            "Connect the authenticated plan-submission endpoint to the MCP planner and typed URCAL worker contract.",
+            "Connect the typed URCAL worker contract and lease-fenced task claiming.",
             "Verify fresh, model-specific zero-cost and quota evidence before live inference.",
             "Keep provider and tool permissions isolated and fail-closed.",
         ],
@@ -150,7 +151,7 @@ def build_plan(objective: str, task_kind: str = "general",
             "live_execution": False, "human_approval_required_for_side_effects": True,
             "production_access": False,
         },
-        "execution_readiness": "blocked_pending_submission_worker_and_zero_cost_provider_gate",
+        "execution_readiness": "blocked_pending_typed_worker_and_zero_cost_provider_gate",
         "disclaimer": "Plan only. No agents, models, tools, or external services were invoked.",
     }
     plan["plan_sha256"] = _digest(plan)
