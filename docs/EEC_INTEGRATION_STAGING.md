@@ -35,11 +35,13 @@ Applied and verified on the existing free-tier Staging Supabase project:
 - Migration 20261124131058 creates private run, task, attempt, and event ledgers.
 - Migration 20261124131109 adds the task-event lookup index.
 - Migration 20261124131126 removes DELETE permission from the service role to preserve the audit history.
-- All four tables have RLS enabled; anon and authenticated have no SELECT access; service_role has the required operational permissions.
+- Migration 20261124132155 adds idempotent plan persistence, status readback, artifact storage, and same-run dependency validation.
+- Migration 20261124132421 adds a narrowly scoped Vault secret reader available only to service_role.
+- All five tables (runs, tasks, attempts, events, artifacts) have RLS enabled; anon and authenticated have no SELECT access; service_role has the required operational permissions.
 - Spend is constrained to exactly zero and external data transfer to false at the database level.
 - The ledger stores hashes and policy metadata, not raw objectives, prompts, or credentials.
 
-The existing worker still handles only research_search. The ledger now includes a private artifact store, deferred same-run dependency validation, and service-role-only RPCs for idempotent plan persistence and plan-status retrieval. A nine-task engineering plan for this integration has been persisted and read back successfully. The plan is stored as hashes, role/task metadata, and dependency IDs; the raw objective is not stored. An authenticated Staging Edge Function (`flybrain-eec-ledger`) exposes plan persistence and status readback using a dedicated Staging-only credential held in Supabase Vault and a branch-scoped Vercel Preview environment variable. A per-IP database rate limit protects the endpoint. The MCP bridge now includes authenticated `eec_submit_plan` and `eec_plan_status` tools; `eec_plan` remains read-only. This connects the planner to durable persistence, but not yet to a task-claim/execute worker, and no EEC agent execution has been activated.
+The existing worker still handles only research_search. The ledger now includes a private artifact store, deferred same-run dependency validation, and service-role-only RPCs for idempotent plan persistence and plan-status retrieval. A nine-task engineering plan for this integration has been persisted and read back successfully. The plan is stored as hashes, role/task metadata, and dependency IDs; the raw objective is not stored. An authenticated Staging Edge Function (`flybrain-eec-ledger`) exposes plan persistence and status readback using a dedicated Staging-only credential held in Supabase Vault and a branch-scoped Vercel Preview environment variable. A per-IP database rate limit protects the endpoint. The MCP bridge now includes authenticated `eec_submit_plan` and `eec_plan_status` tools; `eec_plan` remains read-only. The Vercel-to-ledger configuration is in place, but a live MCP-to-Edge-Function invocation has not yet been independently verified. The typed task-claim/execute worker and live agent execution remain disabled.
 
 ## Deployment boundary
 
@@ -47,12 +49,13 @@ Vercel automatically generated a Preview deployment for the pull request. No Pro
 
 ## Remaining implementation gates
 
-1. Connect the typed EEC task contract to URCAL using the existing queue, lease fencing, and idempotency primitives.
-2. Add worker-side claim, heartbeat, completion, retry, and artifact-writing operations for EEC task records.
-3. Add independent review and QA result gates so synthesis cannot accept unreviewed work.
-4. Inspect and extend the existing packaged ModelHub adapter contract without creating a second provider registry.
-5. Verify provider-specific zero-cost evidence before any live provider request. If unavailable, retain mock-only execution.
-6. Verify the full Staging path end-to-end, then keep Production entirely separate.
+1. Independently verify the Vercel MCP-to-Edge-Function submission and status calls in the Staging Preview.
+2. Connect the typed EEC task contract to URCAL using the existing queue, lease fencing, and idempotency primitives.
+3. Add worker-side claim, heartbeat, completion, retry, and artifact-writing operations for EEC task records.
+4. Add independent review and QA result gates so synthesis cannot accept unreviewed work.
+5. Inspect and extend the existing packaged ModelHub adapter contract without creating a second provider registry.
+6. Verify provider-specific zero-cost evidence before any live provider request. If unavailable, retain mock-only execution.
+7. Verify the full Staging path end-to-end, then keep Production entirely separate.
 
 ## Acceptance criteria
 
