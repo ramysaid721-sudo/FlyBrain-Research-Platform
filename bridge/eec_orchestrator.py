@@ -57,6 +57,7 @@ def eec_status() -> dict[str, Any]:
         "max_parallel_tasks": MAX_PARALLEL_TASKS,
         "roles": list(ROLES),
         "execution_blockers": [
+            "Verify authenticated MCP-to-ledger submission and status readback in Staging.",
             "Connect the typed URCAL worker contract and lease-fenced task claiming.",
             "Verify fresh, model-specific zero-cost and quota evidence before live inference.",
             "Keep provider and tool permissions isolated and fail-closed.",
