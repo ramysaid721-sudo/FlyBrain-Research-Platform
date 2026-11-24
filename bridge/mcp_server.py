@@ -6,6 +6,7 @@ from threading import Lock
 from wsgiref.simple_server import make_server
 from .chat_api import FlyBrainChatApp
 from .tool_manager import ToolPolicyError, tool_manager_status, tool_catalog, assess_tool
+from .eec_orchestrator import EECPlanError, eec_status, build_plan
 
 class FlyBrainMCP:
     def __init__(self, app: FlyBrainChatApp, token: str):
@@ -41,7 +42,7 @@ class FlyBrainMCP:
                 "service": "flybrain-mcp",
                 "version": "0.16.0",
                 "mcp_endpoint": "/mcp",
-                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool"],
+                "tools": ["ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "browser_run_task", "tool_manager_status", "tool_catalog", "assess_tool", "eec_status", "eec_plan"],
                 "capabilities": {
                     "project_retrieval": True,
                     "public_web_search": True,
@@ -72,7 +73,7 @@ class FlyBrainMCP:
             params = req.get("params") or {}
             tool_name = params.get("name") if method == "tools/call" else None
             public_methods = {"initialize", "ping", "tools/list"}
-            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool"}
+            public_tools = {"ask_flybrain", "browser_search", "browser_fetch", "browser_research", "browser_use_status", "tool_manager_status", "tool_catalog", "assess_tool", "eec_status", "eec_plan"}
             public_request = method in public_methods or (method == "tools/call" and tool_name in public_tools)
             if not public_request and not hmac.compare_digest(supplied, self.token):
                 return self.send(start, "401 Unauthorized", {"error": "unauthorized"})
@@ -133,6 +134,19 @@ class FlyBrainMCP:
                          "source": {"type": "string", "maxLength": 300}},
                          "required": ["name"], "additionalProperties": False},
                      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "eec_status", "title": "EEC orchestration readiness",
+                     "description": "Report EEC planning readiness, role catalog, zero-cost policy, and execution blockers. Does not invoke agents or providers.",
+                     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+                    {"name": "eec_plan", "title": "Build a bounded EEC execution plan",
+                     "description": "Decompose a research or engineering objective into bounded role assignments, dependencies, execution waves, and acceptance criteria. Planning only; no agent or provider is invoked.",
+                     "inputSchema": {"type": "object", "properties": {
+                         "objective": {"type": "string", "minLength": 1, "maxLength": 8000},
+                         "task_kind": {"type": "string", "enum": ["general", "research", "engineering", "security", "performance", "documentation"], "default": "general"},
+                         "data_classification": {"type": "string", "enum": ["public", "internal", "confidential", "prohibited"], "default": "internal"},
+                         "max_parallel_tasks": {"type": "integer", "minimum": 1, "maximum": 4, "default": 3}},
+                         "required": ["objective"], "additionalProperties": False},
+                     "annotations": {"readOnlyHint": True, "openWorldHint": False}},
                     {"name": "browser_run_task", "title": "Run a browser task",
                      "description": "Run a bounded interactive Browser Use task on an authorized public HTTPS website. Requires Browser Use, Chromium, and a reachable configured model on a compatible browser host. Does not bypass logins, CAPTCHAs, paywalls, or access controls. Account changes, submissions, purchases, publishing, deletion, and other side effects are blocked unless allow_side_effects is explicitly true.",
                      "inputSchema": {"type": "object", "properties": {
@@ -151,6 +165,20 @@ class FlyBrainMCP:
                     if args:
                         raise ValueError("tool_manager_status accepts no arguments")
                     return self.send(start, "200 OK", self._tool_result(mid, tool_manager_status()))
+                if name == "eec_status":
+                    if args:
+                        raise ValueError("eec_status accepts no arguments")
+                    return self.send(start, "200 OK", self._tool_result(mid, eec_status()))
+                if name == "eec_plan":
+                    if set(args) - {"objective", "task_kind", "data_classification", "max_parallel_tasks"}:
+                        raise ValueError("Unexpected eec_plan argument")
+                    try:
+                        plan = build_plan(args.get("objective"), args.get("task_kind", "general"),
+                                          args.get("data_classification", "internal"),
+                                          args.get("max_parallel_tasks", 3))
+                    except EECPlanError as exc:
+                        raise ValueError(str(exc)) from exc
+                    return self.send(start, "200 OK", self._tool_result(mid, plan))
                 if name == "tool_catalog":
                     if args:
                         raise ValueError("tool_catalog accepts no arguments")
