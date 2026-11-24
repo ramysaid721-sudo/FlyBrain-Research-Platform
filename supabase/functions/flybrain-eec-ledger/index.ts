@@ -17,6 +17,11 @@ function equalSecret(a: string, b: string): boolean {
   return diff === 0;
 }
 
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function rpc(name: string, args: Record<string, unknown>) {
   const base = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -53,6 +58,19 @@ Deno.serve(async (request: Request) => {
   }
   const length = Number(request.headers.get("content-length") ?? "0");
   if (!Number.isFinite(length) || length < 1 || length > 65536) return reply({ error: "invalid_request_size" }, 413);
+
+  const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+  let allowed = false;
+  try {
+    allowed = await rpc("consume_flybrain_rate_limit", {
+      p_key_hash: await sha256("flybrain-eec-ledger:" + clientIp),
+      p_limit: 30,
+      p_window_seconds: 60,
+    }) === true;
+  } catch {
+    return reply({ error: "rate_limit_unavailable" }, 503);
+  }
+  if (!allowed) return reply({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429);
 
   let expected = "";
   try { expected = await expectedToken(); }
