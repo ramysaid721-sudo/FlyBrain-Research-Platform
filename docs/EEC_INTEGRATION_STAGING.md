@@ -41,6 +41,10 @@ Applied and verified on the existing free-tier Staging Supabase project:
 
 The existing worker still handles only research_search. The new ledger is not yet connected to a task-claim/execute worker, and no EEC agent execution has been activated.
 
+## Deployment boundary
+
+Vercel automatically generated a Preview deployment for the pull request. No Production deployment or merge was performed.
+
 ## Remaining implementation gates
 
 1. Inspect and extend the existing packaged ModelHub adapter contract without creating a second provider registry.
