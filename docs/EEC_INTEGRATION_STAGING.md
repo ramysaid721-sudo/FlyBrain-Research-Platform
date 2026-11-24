@@ -21,7 +21,7 @@ The EEC layer supplies bounded task decomposition, role assignment, dependency g
 - External data transfer: disabled.
 - Default data classification: internal.
 - Confidential and prohibited data never enter an external provider route.
-- No tool execution, package installation, repository writes, or deployments are performed by the planning endpoint.
+- The planning endpoint does not execute tools, install packages, invoke models, or write to the source repository. The authenticated submission tool writes only plan hashes, role/task metadata, and dependency IDs to the Staging ledger.
 - Side effects require human approval.
 - Production access is excluded.
 
@@ -39,7 +39,7 @@ Applied and verified on the existing free-tier Staging Supabase project:
 - Spend is constrained to exactly zero and external data transfer to false at the database level.
 - The ledger stores hashes and policy metadata, not raw objectives, prompts, or credentials.
 
-The existing worker still handles only research_search. The ledger now includes a private artifact store, deferred same-run dependency validation, and service-role-only RPCs for idempotent plan persistence and plan-status retrieval. A nine-task engineering plan for this integration has been persisted and read back successfully. The plan is stored as hashes, role/task metadata, and dependency IDs; the raw objective is not stored. An authenticated Staging Edge Function (`flybrain-eec-ledger`) now exposes plan persistence and status readback using the existing worker token from Vault and a per-IP database rate limit; it does not call external providers. The MCP planner is not yet wired to this endpoint, the ledger is not connected to a task-claim/execute worker, and no EEC agent execution has been activated.
+The existing worker still handles only research_search. The ledger now includes a private artifact store, deferred same-run dependency validation, and service-role-only RPCs for idempotent plan persistence and plan-status retrieval. A nine-task engineering plan for this integration has been persisted and read back successfully. The plan is stored as hashes, role/task metadata, and dependency IDs; the raw objective is not stored. An authenticated Staging Edge Function (`flybrain-eec-ledger`) exposes plan persistence and status readback using a dedicated Staging-only credential held in Supabase Vault and a branch-scoped Vercel Preview environment variable. A per-IP database rate limit protects the endpoint. The MCP bridge now includes authenticated `eec_submit_plan` and `eec_plan_status` tools; `eec_plan` remains read-only. This connects the planner to durable persistence, but not yet to a task-claim/execute worker, and no EEC agent execution has been activated.
 
 ## Deployment boundary
 
@@ -47,16 +47,16 @@ Vercel automatically generated a Preview deployment for the pull request. No Pro
 
 ## Remaining implementation gates
 
-1. Inspect and extend the existing packaged ModelHub adapter contract without creating a second provider registry.
-2. Add durable agent-attempt and artifact records to the existing Staging ledger after migration and RLS review.
-3. Adapt the existing URCAL worker to claim typed agent tasks and enforce lease fencing/idempotency.
-4. Add independent review and QA result gates.
+1. Connect the typed EEC task contract to URCAL using the existing queue, lease fencing, and idempotency primitives.
+2. Add worker-side claim, heartbeat, completion, retry, and artifact-writing operations for EEC task records.
+3. Add independent review and QA result gates so synthesis cannot accept unreviewed work.
+4. Inspect and extend the existing packaged ModelHub adapter contract without creating a second provider registry.
 5. Verify provider-specific zero-cost evidence before any live provider request. If unavailable, retain mock-only execution.
-6. Verify Staging end-to-end, then keep Production entirely separate.
+6. Verify the full Staging path end-to-end, then keep Production entirely separate.
 
 ## Acceptance criteria
 
 - Unit tests cover input validation, task dependencies, bounded parallelism, policy defaults, and plan hashing.
-- MCP exposes read-only eec_status and eec_plan.
+- MCP exposes read-only eec_status, eec_plan, and eec_plan_status, plus authenticated eec_submit_plan for durable plan persistence.
 - Existing MCP, queue, and research behavior remains unchanged.
 - No live inference, external transfer, billing, Production changes, or deployment occurs in this phase.
