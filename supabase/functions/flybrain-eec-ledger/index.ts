@@ -38,7 +38,7 @@ async function rpc(name: string, args: Record<string, unknown>) {
 }
 
 async function expectedToken(): Promise<string> {
-  const value = await rpc("flybrain_worker_secret", { p_name: "flybrain_worker_token" });
+  const value = await rpc("flybrain_eec_ledger_secret", { p_name: "flybrain_eec_ledger_token" });
   if (typeof value !== "string" || value.length < 32) throw new Error("worker_token_unavailable");
   return value;
 }
