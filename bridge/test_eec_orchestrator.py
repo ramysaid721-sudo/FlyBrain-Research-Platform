@@ -17,6 +17,7 @@ class EECOrchestratorTests(unittest.TestCase):
         self.assertTrue(status["persistent_plan_submission_endpoint"])
         self.assertFalse(status["mcp_plan_submission_connected"])
         self.assertFalse(status["persistent_agent_ledger_connected"])
+        self.assertFalse(status["persistent_agent_ledger_connected"])
 
     def test_engineering_plan_has_independent_review_lanes(self):
         plan = build_plan("Add a guarded multi-agent execution layer", "engineering")
