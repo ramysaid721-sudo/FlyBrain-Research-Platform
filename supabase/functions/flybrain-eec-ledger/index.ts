@@ -37,9 +37,12 @@ async function rpc(name: string, args: Record<string, unknown>) {
   return await response.json();
 }
 
+let cachedLedgerToken: string | null = null;
 async function expectedToken(): Promise<string> {
+  if (cachedLedgerToken) return cachedLedgerToken;
   const value = await rpc("flybrain_eec_ledger_secret", { p_name: "flybrain_eec_ledger_token" });
   if (typeof value !== "string" || value.length < 32) throw new Error("worker_token_unavailable");
+  cachedLedgerToken = value;
   return value;
 }
 
